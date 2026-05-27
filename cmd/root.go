@@ -6,6 +6,7 @@ import (
 
 	"github.com/pachimsh/cli/internal/api"
 	"github.com/pachimsh/cli/internal/config"
+	"github.com/pachimsh/cli/internal/update"
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +34,33 @@ func init() {
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 	rootCmd.PersistentFlags().StringVar(&apiURLFlag, "api-url", "", "Override API base URL (default: https://api.pachim.sh)")
 	rootCmd.PersistentFlags().StringVar(&profileFlag, "profile", "", "Use a specific profile (default: \"default\")")
+
+	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		if shouldSkipUpdateCheck(cmd) {
+			return
+		}
+		_ = update.MaybePromptAndUpdate(version, os.Args)
+	}
+}
+
+func shouldSkipUpdateCheck(cmd *cobra.Command) bool {
+	if cmd.Name() == "__set-api-url" {
+		return true
+	}
+
+	for _, arg := range os.Args[1:] {
+		switch arg {
+		case "--version", "-v", "--help", "-h":
+			return true
+		}
+	}
+
+	return false
+}
+
+// CurrentVersion returns the CLI build version.
+func CurrentVersion() string {
+	return version
 }
 
 func resolveBaseURL() string {
