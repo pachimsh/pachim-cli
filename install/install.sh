@@ -4,7 +4,7 @@ set -e
 REPO="pachimsh/cli"
 BINARY="pachim"
 INSTALL_DIR="/usr/local/bin"
-MIRROR_BASE="https://pachim.sh/cli"
+MIRROR_BASE="https://mirrors.pachim.app/cli"
 
 main() {
     OS=$(detect_os)

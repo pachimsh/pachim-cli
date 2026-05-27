@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $Repo = "pachimsh/cli"
 $Binary = "pachim"
-$MirrorBase = "https://pachim.sh/cli"
+$MirrorBase = "https://mirrors.pachim.app/cli"
 
 function Get-LatestVersion {
     try {

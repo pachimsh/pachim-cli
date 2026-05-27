@@ -9,15 +9,15 @@ A command-line tool for deploying projects to servers managed by [Pachim](https:
 **Linux / macOS:**
 
 ```bash
-curl -fsSL https://pachim.sh/cli/install.sh | sh
+curl -fsSL https://mirrors.pachim.app/cli/install.sh | sh
 ```
 
-Install scripts try **pachim.sh** first, then fall back to **GitHub** if the mirror is unavailable.
+Install scripts try **mirrors.pachim.app** first, then fall back to **GitHub** if the mirror is unavailable.
 
 **Windows (PowerShell):**
 
 ```powershell
-irm https://pachim.sh/cli/install.ps1 | iex
+irm https://mirrors.pachim.app/cli/install.ps1 | iex
 ```
 
 ### Package Managers

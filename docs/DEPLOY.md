@@ -5,7 +5,7 @@
 1. Push tag: `git tag v0.1.0 && git push origin v0.1.0`
 2. GitHub Actions builds with GoReleaser → GitHub Release
 3. Same files upload to S3 (for users without GitHub access)
-4. Users install via `https://pachim.sh/cli/install.sh` (or your S3/CDN URL)
+4. Users install via `https://mirrors.pachim.app/cli/install.sh`
 
 ---
 
@@ -13,14 +13,16 @@
 
 Use **Arvan Object Storage**, **MinIO**, or any S3-compatible provider.
 
-Example bucket name: `pachim-cli`
+Example bucket name: `pachim-mirrors`
 
 Enable **public read** for objects under `cli/*` (bucket policy or public bucket — provider-specific).
+
+Map custom domain **`mirrors.pachim.app`** to this bucket (CDN or provider settings).
 
 ### S3 layout after release
 
 ```
-s3://pachim-cli/
+s3://pachim-mirrors/
 ├── cli/
 │   ├── install.sh
 │   ├── install.ps1
@@ -58,12 +60,13 @@ https://YOUR-BUCKET-PUBLIC-URL/cli/latest.txt
 
 **B) Custom domain (recommended):**
 
-Point `https://pachim.sh/cli/` (or `https://dl.pachim.sh/cli/`) to your bucket via:
+Public download base URL:
 
-- Provider CDN / custom domain (Arvan)
-- Or Nginx reverse proxy on your server
+```
+https://mirrors.pachim.app/cli/
+```
 
-Install scripts default to `https://pachim.sh/cli` — keep that URL working.
+CDN should point `mirrors.pachim.app` to bucket `pachim-mirrors` (root). Files live under the `cli/` prefix, so URLs include `/cli/`.
 
 ---
 
@@ -87,7 +90,7 @@ Install scripts default to `https://pachim.sh/cli` — keep that URL working.
 |--------|---------|
 | `GH_PAT` | GitHub PAT with `repo` (for Homebrew/Scoop) |
 | `S3_ENDPOINT` | `https://s3.ir-thr-at1.arvanstorage.ir` |
-| `S3_BUCKET` | `pachim-cli` |
+| `S3_BUCKET` | `pachim-mirrors` |
 | `S3_ACCESS_KEY_ID` | your access key |
 | `S3_SECRET_ACCESS_KEY` | your secret key |
 | `S3_REGION` | e.g. `ir-thr-at1` (if required by provider) |
@@ -102,7 +105,7 @@ Install scripts default to `https://pachim.sh/cli` — keep that URL working.
 |----------|--------|
 | `S3_MIRROR_ENABLED` | `true` |
 | `S3_PREFIX` | `cli` (optional, default in script is `cli`) |
-| `S3_PUBLIC_BASE_URL` | `https://pachim.sh/cli` (documentation only) |
+| `S3_PUBLIC_BASE_URL` | `https://mirrors.pachim.app/cli` (documentation only) |
 | `S3_ACL` | `public-read` (only if your provider needs ACL on upload; Arvan often uses bucket policy instead) |
 | `S3_FORCE_PATH_STYLE` | `true` (for MinIO; leave empty for Arvan) |
 
@@ -128,18 +131,18 @@ Verify:
 - GitHub → Releases → assets present
 - S3 → `cli/v0.1.0/` contains binaries
 - `cli/latest.txt` contains `v0.1.0`
-- `curl https://pachim.sh/cli/latest.txt` (or your public URL)
+- `curl https://mirrors.pachim.app/cli/latest.txt`
 
 ---
 
 ## Step 8 — User installation
 
 ```bash
-curl -fsSL https://pachim.sh/cli/install.sh | sh
+curl -fsSL https://mirrors.pachim.app/cli/install.sh | sh
 ```
 
 ```powershell
-irm https://pachim.sh/cli/install.ps1 | iex
+irm https://mirrors.pachim.app/cli/install.ps1 | iex
 ```
 
 Scripts try **mirror first**, then **GitHub** as fallback.
