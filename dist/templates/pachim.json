@@ -1,0 +1,30 @@
+{
+  "version": "0.1.0",
+  "description": "Deploy your projects to Pachim servers",
+  "homepage": "https://pachim.sh",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/pachim/cli/releases/download/v0.1.0/pachim_windows_amd64.zip",
+      "hash": "PLACEHOLDER"
+    },
+    "arm64": {
+      "url": "https://github.com/pachim/cli/releases/download/v0.1.0/pachim_windows_arm64.zip",
+      "hash": "PLACEHOLDER"
+    }
+  },
+  "bin": "pachim.exe",
+  "checkver": {
+    "github": "https://github.com/pachim/cli"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/pachim/cli/releases/download/v$version/pachim_windows_amd64.zip"
+      },
+      "arm64": {
+        "url": "https://github.com/pachim/cli/releases/download/v$version/pachim_windows_arm64.zip"
+      }
+    }
+  }
+}

@@ -1,0 +1,65 @@
+version: 2
+
+project_name: pachim
+
+builds:
+  - main: .
+    binary: pachim
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/pachim/cli/cmd.version={{.Version}}
+      - -X main.apiBaseURL=https://api.pachim.sh
+
+archives:
+  - formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+
+release:
+  github:
+    owner: pachim
+    name: cli
+  draft: false
+  prerelease: auto
+
+brews:
+  - repository:
+      owner: pachim
+      name: homebrew-tap
+    homepage: "https://pachim.sh"
+    description: "Deploy your projects to Pachim servers"
+    license: "MIT"
+    install: |
+      bin.install "pachim"
+
+scoops:
+  - repository:
+      owner: pachim
+      name: scoop-bucket
+    homepage: "https://pachim.sh"
+    description: "Deploy your projects to Pachim servers"
+    license: "MIT"
