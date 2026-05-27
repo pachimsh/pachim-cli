@@ -176,6 +176,8 @@ Open the failed **Actions** run → **Run GoReleaser** step and scroll to the la
 
 **Node.js 20 deprecation** in the workflow log is a warning only; it does not fail the job. The workflow sets `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`.
 
+**`goreleaser check` exit code 2** means the config is valid but uses deprecated options (e.g. `brews` in GoReleaser 2.16). That is not a hard failure — do not fail CI on exit code 2.
+
 ---
 
 ## Local test (no publish)

@@ -47,20 +47,5 @@ release:
   prerelease: auto
   mode: append
 
-brews:
-  - repository:
-      owner: pachimsh
-      name: homebrew-tap
-    homepage: "https://pachim.sh"
-    description: "Deploy your projects to Pachim servers"
-    license: "MIT"
-    install: |
-      bin.install "pachim"
-
-scoops:
-  - repository:
-      owner: pachimsh
-      name: scoop-bucket
-    homepage: "https://pachim.sh"
-    description: "Deploy your projects to Pachim servers"
-    license: "MIT"
+# Homebrew/Scoop: add homebrew_casks (v2.16+) when tap repos are ready.
+# Workflow uses --skip=brew,scoop until then.
