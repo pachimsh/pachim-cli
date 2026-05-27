@@ -37,7 +37,7 @@ scoop install pachim
 
 ### Manual Download
 
-Download the latest binary from [GitHub Releases](https://github.com/pachimsh/cli/releases) for your platform.
+Download the latest binary from [GitHub Releases](https://github.com/pachimsh/pachim-cli/releases) for your platform.
 
 ### Build from Source
 
@@ -48,7 +48,7 @@ go install github.com/pachimsh/cli@latest
 Or clone and build:
 
 ```bash
-git clone https://github.com/pachimsh/cli.git
+git clone https://github.com/pachimsh/pachim-cli.git
 cd cli
 go build -o pachim .
 ```

@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$Repo = "pachimsh/cli"
+$Repo = "pachimsh/pachim-cli"
 $Binary = "pachim"
 $MirrorBase = "https://mirrors.pachim.app/cli"
 

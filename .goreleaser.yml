@@ -42,9 +42,10 @@ changelog:
 release:
   github:
     owner: pachimsh
-    name: cli
+    name: pachim-cli
   draft: false
   prerelease: auto
+  mode: append
 
 brews:
   - repository:

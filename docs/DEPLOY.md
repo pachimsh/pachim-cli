@@ -74,7 +74,7 @@ CDN should point `mirrors.pachim.app` to bucket `pachim-mirrors` (root). Files l
 
 | Repo | Purpose |
 |------|---------|
-| `pachimsh/cli` | Main code + Actions |
+| `pachimsh/pachim-cli` | Main code + Actions |
 | `pachimsh/homebrew-tap` | Empty (GoReleaser fills) |
 | `pachimsh/scoop-bucket` | Empty (GoReleaser fills) |
 
@@ -84,7 +84,7 @@ CDN should point `mirrors.pachim.app` to bucket `pachim-mirrors` (root). Files l
 
 ## Step 5 — GitHub Secrets
 
-`pachimsh/cli` → **Settings → Secrets and variables → Actions → Secrets**
+`pachimsh/pachim-cli` → **Settings → Secrets and variables → Actions → Secrets**
 
 | Secret | Example |
 |--------|---------|
@@ -104,10 +104,13 @@ CDN should point `mirrors.pachim.app` to bucket `pachim-mirrors` (root). Files l
 | Variable | Value |
 |----------|--------|
 | `S3_MIRROR_ENABLED` | `true` |
+| `ENABLE_PACKAGE_MANAGERS` | `true` — only after `homebrew-tap` + `scoop-bucket` exist **and** `GH_PAT` is set |
 | `S3_PREFIX` | `cli` (optional, default in script is `cli`) |
 | `S3_PUBLIC_BASE_URL` | `https://mirrors.pachim.app/cli` (documentation only) |
 | `S3_ACL` | `public-read` (only if your provider needs ACL on upload; Arvan often uses bucket policy instead) |
 | `S3_FORCE_PATH_STYLE` | `true` (for MinIO; leave empty for Arvan) |
+
+By default, GoReleaser **skips** Homebrew/Scoop so the first release only needs the built-in `GITHUB_TOKEN`. Enable package managers later with both `GH_PAT` and `ENABLE_PACKAGE_MANAGERS=true`.
 
 ---
 
@@ -115,7 +118,7 @@ CDN should point `mirrors.pachim.app` to bucket `pachim-mirrors` (root). Files l
 
 ```bash
 cd pachim-cli
-git remote add origin https://github.com/pachimsh/cli.git   # first time only
+git remote add origin https://github.com/pachimsh/pachim-cli.git   # first time only
 git add .
 git commit -m "Initial release pipeline with S3 mirror"
 git push -u origin main
@@ -155,6 +158,23 @@ Scripts try **mirror first**, then **GitHub** as fallback.
 - Use a dedicated bucket + scoped access key
 - Rotate keys periodically
 - Tag-only releases (`v*`) — workflow does not run on random PRs
+
+---
+
+## Troubleshooting — GoReleaser exit code 1
+
+Open the failed **Actions** run → **Run GoReleaser** step and scroll to the last red lines.
+
+| Log message | Fix |
+|-------------|-----|
+| `repository not found` / `404` on `pachimsh/cli` | `.goreleaser.yml` must use `name: pachim-cli` (same as GitHub repo name, not the Go module path) |
+| `repository not found` / `404` on `homebrew-tap` or `scoop-bucket` | Create empty repos under `pachimsh`, or keep `--skip=brew,scoop` in the workflow |
+| `resource not accessible by integration` | Default token cannot push to other repos — add `GH_PAT` with `repo` scope, or keep brew/scoop skipped |
+| `git is dirty` | Commit all changes before tagging |
+| `version does not start with v` | Tag must be `v0.1.0`, not `0.1.0` |
+| Go version errors | `setup-go` uses `go.mod`; ensure that Go version is available on GitHub runners |
+
+**Node.js 20 deprecation** in the workflow log is a warning only; it does not fail the job. The workflow sets `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`.
 
 ---
 
