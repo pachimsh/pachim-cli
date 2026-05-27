@@ -168,7 +168,8 @@ Open the failed **Actions** run → **Run GoReleaser** step and scroll to the la
 | Log message | Fix |
 |-------------|-----|
 | `repository not found` / `404` on `pachimsh/cli` | `.goreleaser.yml` must use `name: pachim-cli` (same as GitHub repo name, not the Go module path) |
-| `repository not found` / `404` on `homebrew-tap` or `scoop-bucket` | Create empty repos under `pachimsh`, or keep `--skip=brew,scoop` in the workflow |
+| `--skip=brew is not allowed` | Use `homebrew` not `brew` in GoReleaser v2 (`--skip=homebrew,scoop`), or omit skip when brews/scoops are not in config |
+| `repository not found` / `404` on `homebrew-tap` or `scoop-bucket` | Create empty repos under `pachimsh`, or remove brews/scoops from `.goreleaser.yml` |
 | `resource not accessible by integration` | Default token cannot push to other repos — add `GH_PAT` with `repo` scope, or keep brew/scoop skipped |
 | `git is dirty` | Commit all changes before tagging |
 | `version does not start with v` | Tag must be `v0.1.0`, not `0.1.0` |

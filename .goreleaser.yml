@@ -48,4 +48,3 @@ release:
   mode: append
 
 # Homebrew/Scoop: add homebrew_casks (v2.16+) when tap repos are ready.
-# Workflow uses --skip=brew,scoop until then.

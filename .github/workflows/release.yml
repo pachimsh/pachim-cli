@@ -27,12 +27,12 @@ jobs:
           cache: true
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
-          args: release --clean --verbose --skip=brew,scoop
+          args: release --clean --verbose
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT || github.token }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
 
       - name: Configure AWS CLI for S3
         if: vars.S3_MIRROR_ENABLED == 'true'
