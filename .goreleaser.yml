@@ -48,3 +48,4 @@ release:
   mode: append
 
 # Homebrew/Scoop: add homebrew_casks (v2.16+) when tap repos are ready.
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
