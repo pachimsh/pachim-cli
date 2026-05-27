@@ -1,5 +1,4 @@
 pachim.exe
 pachim
-dist/*
-!dist/templates/
+dist/
 *.zip
