@@ -10,9 +10,13 @@ import (
 )
 
 func CreateProjectZip(projectDir, outputPath string) error {
+	return CreateProjectZipWithProgress(projectDir, outputPath, nil)
+}
+
+func CreateProjectZipWithProgress(projectDir, outputPath string, progress ProgressFunc) error {
 	gitTracked, err := getGitTrackedFiles(projectDir)
 	if err != nil {
-		return createZipAllFiles(projectDir, outputPath)
+		return createZipAllFiles(projectDir, outputPath, progress)
 	}
 
 	gitDir := filepath.Join(projectDir, ".git")
@@ -21,7 +25,7 @@ func CreateProjectZip(projectDir, outputPath string) error {
 		gitTracked = append(gitTracked, gitFiles...)
 	}
 
-	return createZipFromFiles(projectDir, outputPath, gitTracked)
+	return createZipFromFiles(projectDir, outputPath, gitTracked, progress)
 }
 
 func collectDirFiles(baseDir, dir string) ([]string, error) {
@@ -64,7 +68,7 @@ func getGitTrackedFiles(dir string) ([]string, error) {
 	return files, nil
 }
 
-func createZipFromFiles(baseDir, outputPath string, files []string) error {
+func createZipFromFiles(baseDir, outputPath string, files []string, progress ProgressFunc) error {
 	outFile, err := os.Create(outputPath)
 	if err != nil {
 		return err
@@ -73,6 +77,17 @@ func createZipFromFiles(baseDir, outputPath string, files []string) error {
 
 	w := zip.NewWriter(outFile)
 	defer w.Close()
+
+	total := len(files)
+	processed := 0
+
+	reportProgress := func() {
+		if progress == nil || total == 0 {
+			return
+		}
+		processed++
+		progress(processed * 100 / total)
+	}
 
 	for _, file := range files {
 		fullPath := filepath.Join(baseDir, file)
@@ -100,47 +115,36 @@ func createZipFromFiles(baseDir, outputPath string, files []string) error {
 		if err != nil {
 			return err
 		}
+
+		reportProgress()
+	}
+
+	if progress != nil {
+		progress(100)
 	}
 
 	return nil
 }
 
-func createZipAllFiles(baseDir, outputPath string) error {
-	outFile, err := os.Create(outputPath)
-	if err != nil {
-		return err
-	}
-	defer outFile.Close()
-
-	w := zip.NewWriter(outFile)
-	defer w.Close()
-
-	return filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+func createZipAllFiles(baseDir, outputPath string, progress ProgressFunc) error {
+	var files []string
+	err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-
 		if info.IsDir() {
 			return nil
 		}
-
 		relPath, err := filepath.Rel(baseDir, path)
 		if err != nil {
 			return err
 		}
-
-		zipEntry, err := w.Create(filepath.ToSlash(relPath))
-		if err != nil {
-			return err
-		}
-
-		f, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-
-		_, err = io.Copy(zipEntry, f)
-		return err
+		files = append(files, relPath)
+		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	return createZipFromFiles(baseDir, outputPath, files, progress)
 }

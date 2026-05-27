@@ -152,28 +152,59 @@ func (c *Client) ToggleGitMerge(siteID string) (bool, error) {
 }
 
 func (c *Client) Deploy(siteID, zipPath string) (*DeployResponse, error) {
+	return c.DeployWithProgress(siteID, zipPath, nil)
+}
+
+func (c *Client) DeployWithProgress(siteID, zipPath string, onProgress func(int)) (*DeployResponse, error) {
 	file, err := os.Open(zipPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open zip file: %w", err)
 	}
 	defer file.Close()
 
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-
-	part, err := writer.CreateFormFile("project_zip", "project.zip")
+	info, err := file.Stat()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create form file: %w", err)
+		return nil, err
 	}
 
-	if _, err := io.Copy(part, file); err != nil {
-		return nil, fmt.Errorf("failed to copy file: %w", err)
-	}
+	pr, pw := io.Pipe()
+	writer := multipart.NewWriter(pw)
 
-	writer.Close()
+	errCh := make(chan error, 1)
+
+	go func() {
+		defer pw.Close()
+
+		part, err := writer.CreateFormFile("project_zip", "project.zip")
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		reader := io.Reader(file)
+		if onProgress != nil {
+			reader = &progressReader{
+				reader:     file,
+				total:      info.Size(),
+				onProgress: onProgress,
+			}
+		}
+
+		if _, err := io.Copy(part, reader); err != nil {
+			errCh <- err
+			return
+		}
+
+		if err := writer.Close(); err != nil {
+			errCh <- err
+			return
+		}
+
+		errCh <- nil
+	}()
 
 	url := fmt.Sprintf("%s/cli/sites/%s/deploy", c.BaseURL, siteID)
-	req, err := http.NewRequest("POST", url, &buf)
+	req, err := http.NewRequest(http.MethodPost, url, pr)
 	if err != nil {
 		return nil, err
 	}
@@ -188,9 +219,13 @@ func (c *Client) Deploy(siteID, zipPath string) (*DeployResponse, error) {
 	}
 	defer httpResp.Body.Close()
 
+	if copyErr := <-errCh; copyErr != nil {
+		return nil, fmt.Errorf("failed to prepare upload: %w", copyErr)
+	}
+
 	respBody, _ := io.ReadAll(httpResp.Body)
 
-	if httpResp.StatusCode != 200 {
+	if httpResp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("deploy failed (HTTP %d): %s", httpResp.StatusCode, string(respBody))
 	}
 
@@ -202,6 +237,10 @@ func (c *Client) Deploy(siteID, zipPath string) (*DeployResponse, error) {
 	var result DeployResponse
 	if err := json.Unmarshal(apiResp.Data, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse deploy response: %w", err)
+	}
+
+	if onProgress != nil {
+		onProgress(100)
 	}
 
 	return &result, nil

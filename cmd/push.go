@@ -13,6 +13,7 @@ import (
 	"github.com/pachimsh/cli/internal/api"
 	"github.com/pachimsh/cli/internal/archive"
 	"github.com/pachimsh/cli/internal/config"
+	"github.com/pachimsh/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -64,6 +65,19 @@ func runPush(cmd *cobra.Command, args []string) error {
 	color.Cyan("Deploying to: %s", site.Domain)
 	fmt.Println()
 
+	baseURL := resolveBaseURL()
+	client := api.NewClient(baseURL, creds.Token)
+
+	siteInfo, err := client.GetSiteInfo(site.ID)
+	if err != nil {
+		color.Red("Failed to fetch site info: %s", err)
+		return nil
+	}
+
+	if !confirmGitMergeBeforePush(client, site.ID, siteInfo) {
+		return nil
+	}
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get working directory: %w", err)
@@ -73,8 +87,9 @@ func runPush(cmd *cobra.Command, args []string) error {
 	zipPath := filepath.Join(tmpDir, fmt.Sprintf("pachim-deploy-%d.zip", time.Now().UnixNano()))
 	defer os.Remove(zipPath)
 
-	color.Yellow("⟳ Packaging project...")
-	if err := archive.CreateProjectZip(cwd, zipPath); err != nil {
+	if err := ui.RunWithProgress("Packaging project...", "Project packaged", func(setProgress func(int)) error {
+		return archive.CreateProjectZipWithProgress(cwd, zipPath, archive.ProgressFunc(setProgress))
+	}); err != nil {
 		color.Red("Failed to package project: %s", err)
 		return nil
 	}
@@ -83,29 +98,12 @@ func runPush(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  Package size: %.2f MB\n", float64(info.Size())/(1024*1024))
 	fmt.Println()
 
-	baseURL := resolveBaseURL()
-	client := api.NewClient(baseURL, creds.Token)
-
-	siteInfo, err := client.GetSiteInfo(site.ID)
-	if err == nil && !siteInfo.GitMerge {
-		fmt.Println()
-		color.Yellow("⚠ Git merge is disabled for this site.")
-		fmt.Println("  This means the uploaded code will completely replace the existing code.")
-		fmt.Println()
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Print("Continue? [y/N]: ")
-		answer, _ := reader.ReadString('\n')
-		answer = strings.TrimSpace(strings.ToLower(answer))
-		if answer != "y" && answer != "yes" {
-			color.Cyan("Cancelled. To enable git merge, run: pachim git-merge --enable")
-			return nil
-		}
-		fmt.Println()
-	}
-
-	color.Yellow("⟳ Uploading and starting deployment...")
-	deployResp, err := client.Deploy(site.ID, zipPath)
-	if err != nil {
+	var deployResp *api.DeployResponse
+	if err := ui.RunWithProgress("Uploading and starting deployment...", "Upload complete", func(setProgress func(int)) error {
+		var deployErr error
+		deployResp, deployErr = client.DeployWithProgress(site.ID, zipPath, setProgress)
+		return deployErr
+	}); err != nil {
 		color.Red("Deployment failed: %s", err)
 		return nil
 	}
@@ -114,10 +112,64 @@ func runPush(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	color.Yellow("⟳ Waiting for deployment to complete...")
-	return pollDeployment(client, site.ID, deployResp.DeploymentID)
+	wasFirstDeploy := siteInfo.SetupType == ""
+	return pollDeployment(client, site.ID, deployResp.DeploymentID, wasFirstDeploy)
 }
 
-func pollDeployment(client *api.Client, siteID, deploymentID string) error {
+func confirmGitMergeBeforePush(client *api.Client, siteID string, siteInfo *api.SiteInfo) bool {
+	if siteInfo.GitMerge {
+		return true
+	}
+
+	// First deploy: site has no existing code yet, git merge is not relevant.
+	if siteInfo.SetupType == "" {
+		return true
+	}
+
+	fmt.Println()
+	color.Yellow("⚠ Git merge is disabled for this site.")
+	fmt.Println("  Your upload will completely replace the code on the server.")
+	fmt.Println("  Enabling git merge lets future uploads merge changes (like git push).")
+	fmt.Println()
+	fmt.Print("Enable git merge and continue? [Y/n]: ")
+
+	reader := bufio.NewReader(os.Stdin)
+	answer, _ := reader.ReadString('\n')
+	answer = strings.TrimSpace(strings.ToLower(answer))
+
+	if answer == "" || answer == "y" || answer == "yes" {
+		if !enableGitMerge(client, siteID) {
+			return false
+		}
+		fmt.Println()
+		return true
+	}
+
+	fmt.Print("Continue with full replace instead? [y/N]: ")
+	answer, _ = reader.ReadString('\n')
+	answer = strings.TrimSpace(strings.ToLower(answer))
+	if answer == "y" || answer == "yes" {
+		fmt.Println()
+		return true
+	}
+
+	color.Cyan("Cancelled.")
+	return false
+}
+
+func enableGitMerge(client *api.Client, siteID string) bool {
+	enabled, err := client.ToggleGitMerge(siteID)
+	if err != nil {
+		color.Red("Failed to enable git merge: %s", err)
+		return false
+	}
+	if enabled {
+		color.Green("✓ Git merge enabled.")
+	}
+	return true
+}
+
+func pollDeployment(client *api.Client, siteID, deploymentID string, wasFirstDeploy bool) error {
 	maxAttempts := 60
 	interval := 5 * time.Second
 
@@ -137,6 +189,7 @@ func pollDeployment(client *api.Client, siteID, deploymentID string) error {
 			if status.FinishedAt != "" {
 				fmt.Printf("  Finished at: %s\n", status.FinishedAt)
 			}
+			offerGitMergeAfterFirstDeploy(client, siteID, wasFirstDeploy)
 			offerGitPush()
 			return nil
 		case "failed":
@@ -160,6 +213,33 @@ func pollDeployment(client *api.Client, siteID, deploymentID string) error {
 
 	color.Yellow("Timed out waiting for deployment. Check the Pachim dashboard for status.")
 	return nil
+}
+
+func offerGitMergeAfterFirstDeploy(client *api.Client, siteID string, wasFirstDeploy bool) {
+	if !wasFirstDeploy || !isGitRepo() {
+		return
+	}
+
+	siteInfo, err := client.GetSiteInfo(siteID)
+	if err != nil || siteInfo.GitMerge {
+		return
+	}
+
+	fmt.Println()
+	color.Cyan("First deploy completed successfully.")
+	fmt.Println("  Enable git merge so future uploads merge with the server (like git push).")
+	fmt.Println()
+	fmt.Print("Enable git merge for future pushes? [Y/n]: ")
+
+	reader := bufio.NewReader(os.Stdin)
+	answer, _ := reader.ReadString('\n')
+	answer = strings.TrimSpace(strings.ToLower(answer))
+
+	if answer != "" && answer != "y" && answer != "yes" {
+		return
+	}
+
+	enableGitMerge(client, siteID)
 }
 
 func offerGitPush() {
