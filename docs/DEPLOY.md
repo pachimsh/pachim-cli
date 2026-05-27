@@ -1,121 +1,163 @@
-# Release & Mirror Deployment
+# Release & S3 Mirror Deployment
 
-## How CI/CD works
+## Overview
 
-1. Push a version tag: `git tag v0.1.0 && git push origin v0.1.0`
-2. GitHub Actions runs `.github/workflows/release.yml`
-3. GoReleaser builds 6 binaries and publishes a GitHub Release
-4. Optionally uploads the same files to `pachim.sh` (Iran-accessible mirror)
+1. Push tag: `git tag v0.1.0 && git push origin v0.1.0`
+2. GitHub Actions builds with GoReleaser → GitHub Release
+3. Same files upload to S3 (for users without GitHub access)
+4. Users install via `https://pachim.sh/cli/install.sh` (or your S3/CDN URL)
 
-## GitHub repository setup
+---
 
-### Required repositories
+## Step 1 — Create S3 bucket
 
-- `pachim/cli` — main CLI repo
-- `pachim/homebrew-tap` — empty repo (GoReleaser pushes formula)
-- `pachim/scoop-bucket` — empty repo (GoReleaser pushes manifest)
+Use **Arvan Object Storage**, **MinIO**, or any S3-compatible provider.
 
-### Workflow permissions
+Example bucket name: `pachim-cli`
 
-In `pachim/cli` → **Settings → Actions → General → Workflow permissions**:
+Enable **public read** for objects under `cli/*` (bucket policy or public bucket — provider-specific).
 
-- Enable **Read and write permissions**
-
-### Secret for Homebrew / Scoop (recommended)
-
-Create a Personal Access Token with `repo` scope, then add:
-
-| Secret | Value |
-|--------|--------|
-| `GH_PAT` | your GitHub PAT |
-
-GoReleaser uses `GH_PAT` when set, otherwise `github.token`.
-
-## pachim.sh mirror (Iran / internal network)
-
-### 1. Server directory layout
-
-On your web server (nginx/apache serving `pachim.sh`):
+### S3 layout after release
 
 ```
-/var/www/pachim.sh/cli/          ← adjust path to match your vhost
-├── install.sh
-├── install.ps1
-├── latest.txt                   ← contains e.g. v0.1.0
-├── v0.1.0/
-│   ├── pachim_linux_amd64.tar.gz
-│   ├── pachim_linux_arm64.tar.gz
-│   ├── pachim_darwin_amd64.tar.gz
-│   ├── pachim_darwin_arm64.tar.gz
-│   ├── pachim_windows_amd64.zip
-│   ├── pachim_windows_arm64.zip
-│   └── checksums.txt
-└── v0.1.1/
-    └── ...
+s3://pachim-cli/
+├── cli/
+│   ├── install.sh
+│   ├── install.ps1
+│   ├── latest.txt          ← e.g. v0.1.0
+│   └── v0.1.0/
+│       ├── pachim_linux_amd64.tar.gz
+│       ├── pachim_windows_amd64.zip
+│       └── checksums.txt
 ```
 
-Public URLs:
+---
 
-- `https://pachim.sh/cli/install.sh`
-- `https://pachim.sh/cli/latest.txt`
-- `https://pachim.sh/cli/v0.1.0/pachim_linux_amd64.tar.gz`
+## Step 2 — Create access key (minimal permissions)
 
-### 2. Nginx example
+Create a key that can **only** write/read your CLI bucket (not other buckets).
 
-```nginx
-location /cli/ {
-    alias /var/www/pachim.sh/cli/;
-    autoindex off;
-}
+Minimum permissions (conceptually):
+
+- `s3:PutObject`, `s3:GetObject`, `s3:ListBucket`
+- Resource: `arn:...:pachim-cli` and `arn:...:pachim-cli/cli/*`
+
+Do **not** grant `s3:DeleteBucket` or full `s3:*`.
+
+---
+
+## Step 3 — Public download URL
+
+Choose one:
+
+**A) Direct S3/CDN URL** (if bucket is public):
+
+```
+https://YOUR-BUCKET-PUBLIC-URL/cli/latest.txt
 ```
 
-### 3. GitHub repository variable
+**B) Custom domain (recommended):**
 
-In `pachim/cli` → **Settings → Secrets and variables → Actions → Variables**:
+Point `https://pachim.sh/cli/` (or `https://dl.pachim.sh/cli/`) to your bucket via:
+
+- Provider CDN / custom domain (Arvan)
+- Or Nginx reverse proxy on your server
+
+Install scripts default to `https://pachim.sh/cli` — keep that URL working.
+
+---
+
+## Step 4 — GitHub: create repositories
+
+| Repo | Purpose |
+|------|---------|
+| `pachimsh/cli` | Main code + Actions |
+| `pachimsh/homebrew-tap` | Empty (GoReleaser fills) |
+| `pachimsh/scoop-bucket` | Empty (GoReleaser fills) |
+
+**Settings → Actions → General → Workflow permissions:** Read and write.
+
+---
+
+## Step 5 — GitHub Secrets
+
+`pachimsh/cli` → **Settings → Secrets and variables → Actions → Secrets**
+
+| Secret | Example |
+|--------|---------|
+| `GH_PAT` | GitHub PAT with `repo` (for Homebrew/Scoop) |
+| `S3_ENDPOINT` | `https://s3.ir-thr-at1.arvanstorage.ir` |
+| `S3_BUCKET` | `pachim-cli` |
+| `S3_ACCESS_KEY_ID` | your access key |
+| `S3_SECRET_ACCESS_KEY` | your secret key |
+| `S3_REGION` | e.g. `ir-thr-at1` (if required by provider) |
+
+---
+
+## Step 6 — GitHub Variables
+
+**Settings → Secrets and variables → Actions → Variables**
 
 | Variable | Value |
 |----------|--------|
-| `PACHIM_MIRROR_ENABLED` | `true` |
-| `PACHIM_DEPLOY_PATH` | `/var/www/pachim.sh/cli` (optional, this is the default in script) |
+| `S3_MIRROR_ENABLED` | `true` |
+| `S3_PREFIX` | `cli` (optional, default in script is `cli`) |
+| `S3_PUBLIC_BASE_URL` | `https://pachim.sh/cli` (documentation only) |
+| `S3_ACL` | `public-read` (only if your provider needs ACL on upload; Arvan often uses bucket policy instead) |
+| `S3_FORCE_PATH_STYLE` | `true` (for MinIO; leave empty for Arvan) |
 
-### 4. GitHub secrets for SSH upload
+---
 
-| Secret | Value |
-|--------|--------|
-| `PACHIM_DEPLOY_HOST` | e.g. `pachim.sh` or server IP |
-| `PACHIM_DEPLOY_USER` | e.g. `deploy` |
-| `PACHIM_DEPLOY_KEY` | private SSH key (full PEM) |
-
-The deploy user must be able to write to `PACHIM_DEPLOY_PATH`.
-
-### 5. One-time: host install scripts manually
-
-Until the first release runs, you can copy install scripts once:
+## Step 7 — Push code and release
 
 ```bash
-scp install/install.sh install/install.ps1 user@server:/var/www/pachim.sh/cli/
+cd pachim-cli
+git remote add origin https://github.com/pachimsh/cli.git   # first time only
+git add .
+git commit -m "Initial release pipeline with S3 mirror"
+git push -u origin main
+
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
-After the first tagged release, CI updates them automatically.
+Check **Actions** tab → workflow should be green.
 
-## User installation
+Verify:
 
-**Linux / macOS (mirror first, GitHub fallback):**
+- GitHub → Releases → assets present
+- S3 → `cli/v0.1.0/` contains binaries
+- `cli/latest.txt` contains `v0.1.0`
+- `curl https://pachim.sh/cli/latest.txt` (or your public URL)
+
+---
+
+## Step 8 — User installation
 
 ```bash
 curl -fsSL https://pachim.sh/cli/install.sh | sh
 ```
 
-**Windows:**
-
 ```powershell
 irm https://pachim.sh/cli/install.ps1 | iex
 ```
 
-## Local release test (without publishing)
+Scripts try **mirror first**, then **GitHub** as fallback.
+
+---
+
+## Security notes
+
+- Secrets stay in GitHub — never commit keys to git
+- Use a dedicated bucket + scoped access key
+- Rotate keys periodically
+- Tag-only releases (`v*`) — workflow does not run on random PRs
+
+---
+
+## Local test (no publish)
 
 ```bash
-go install github.com/goreleaser/goreleaser/v2@latest
 goreleaser release --snapshot --clean
 ls dist/
 ```

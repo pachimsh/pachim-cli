@@ -16,7 +16,7 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/pachim/cli/cmd.version={{.Version}}
+      - -X github.com/pachimsh/cli/cmd.version={{.Version}}
       - -X main.apiBaseURL=https://api.pachim.sh
 
 archives:
@@ -41,14 +41,14 @@ changelog:
 
 release:
   github:
-    owner: pachim
+    owner: pachimsh
     name: cli
   draft: false
   prerelease: auto
 
 brews:
   - repository:
-      owner: pachim
+      owner: pachimsh
       name: homebrew-tap
     homepage: "https://pachim.sh"
     description: "Deploy your projects to Pachim servers"
@@ -58,7 +58,7 @@ brews:
 
 scoops:
   - repository:
-      owner: pachim
+      owner: pachimsh
       name: scoop-bucket
     homepage: "https://pachim.sh"
     description: "Deploy your projects to Pachim servers"

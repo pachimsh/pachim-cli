@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-REPO="pachim/cli"
+REPO="pachimsh/cli"
 BINARY="pachim"
 INSTALL_DIR="/usr/local/bin"
 MIRROR_BASE="https://pachim.sh/cli"

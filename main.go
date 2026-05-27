@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/pachim/cli/cmd"
-	"github.com/pachim/cli/internal/api"
+	"github.com/pachimsh/cli/cmd"
+	"github.com/pachimsh/cli/internal/api"
 )
 
 var apiBaseURL string

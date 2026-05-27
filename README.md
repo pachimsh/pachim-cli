@@ -25,30 +25,30 @@ irm https://pachim.sh/cli/install.ps1 | iex
 **Homebrew (macOS / Linux):**
 
 ```bash
-brew install pachim/tap/pachim
+brew install pachimsh/homebrew-tap/pachim
 ```
 
 **Scoop (Windows):**
 
 ```powershell
-scoop bucket add pachim https://github.com/pachim/scoop-bucket
+scoop bucket add pachimsh https://github.com/pachimsh/scoop-bucket
 scoop install pachim
 ```
 
 ### Manual Download
 
-Download the latest binary from [GitHub Releases](https://github.com/pachim/cli/releases) for your platform.
+Download the latest binary from [GitHub Releases](https://github.com/pachimsh/cli/releases) for your platform.
 
 ### Build from Source
 
 ```bash
-go install github.com/pachim/cli@latest
+go install github.com/pachimsh/cli@latest
 ```
 
 Or clone and build:
 
 ```bash
-git clone https://github.com/pachim/cli.git
+git clone https://github.com/pachimsh/cli.git
 cd cli
 go build -o pachim .
 ```

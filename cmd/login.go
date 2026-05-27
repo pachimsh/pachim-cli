@@ -8,8 +8,8 @@ import (
 	"syscall"
 
 	"github.com/fatih/color"
-	"github.com/pachim/cli/internal/api"
-	"github.com/pachim/cli/internal/config"
+	"github.com/pachimsh/cli/internal/api"
+	"github.com/pachimsh/cli/internal/config"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )

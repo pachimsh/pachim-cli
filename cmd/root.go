@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/pachim/cli/internal/api"
+	"github.com/pachimsh/cli/internal/api"
 	"github.com/spf13/cobra"
 )
 
