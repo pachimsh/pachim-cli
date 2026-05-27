@@ -10,7 +10,6 @@ type Credentials struct {
 	Token  string `json:"token"`
 	Email  string `json:"email"`
 	Name   string `json:"name"`
-	APIUrl string `json:"api_url,omitempty"`
 }
 
 type SiteConfig struct {
@@ -21,6 +20,10 @@ type SiteConfig struct {
 type ProjectConfig struct {
 	Default string                `json:"default"`
 	Sites   map[string]SiteConfig `json:"sites"`
+}
+
+type GlobalConfig struct {
+	APIURL string `json:"api_url,omitempty"`
 }
 
 func PachimDir() (string, error) {
@@ -43,6 +46,80 @@ func ProfilePath(profile string) (string, error) {
 
 func ProjectConfigPath() string {
 	return ".pachim.json"
+}
+
+func GlobalConfigPath() (string, error) {
+	dir, err := PachimDir()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(dir, "pachim.json"), nil
+}
+
+func LoadGlobalConfig() (*GlobalConfig, error) {
+	path, err := GlobalConfigPath()
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &GlobalConfig{}, nil
+		}
+		return nil, err
+	}
+
+	var cfg GlobalConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+
+	return &cfg, nil
+}
+
+func SaveGlobalConfig(cfg *GlobalConfig) error {
+	path, err := GlobalConfigPath()
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, data, 0600)
+}
+
+func SaveGlobalAPIURL(apiURL string) error {
+	cfg, err := LoadGlobalConfig()
+	if err != nil {
+		return err
+	}
+
+	cfg.APIURL = apiURL
+
+	return SaveGlobalConfig(cfg)
+}
+
+func ClearGlobalAPIURL() error {
+	path, err := GlobalConfigPath()
+	if err != nil {
+		return err
+	}
+
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	return nil
 }
 
 func LoadCredentials(profile string) (*Credentials, error) {

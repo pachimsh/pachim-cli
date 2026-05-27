@@ -139,24 +139,6 @@ Stored at `~/.pachim/profiles/<name>.json` (file permissions: 0600). Never commi
 }
 ```
 
-## Development
-
-### Custom API URL
-
-For local development, override the API URL:
-
-```bash
-# Via environment variable
-export PACHIM_API_URL=http://localhost:8000
-pachim login
-
-# Via flag
-pachim --api-url http://localhost:8000 login
-
-# Via build-time injection
-go build -ldflags "-X main.apiBaseURL=http://localhost:8000" -o pachim .
-```
-
 ### Build
 
 ```bash

@@ -84,10 +84,6 @@ func runPush(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	baseURL := resolveBaseURL()
-	if creds.APIUrl != "" {
-		baseURL = creds.APIUrl
-	}
-
 	client := api.NewClient(baseURL, creds.Token)
 
 	siteInfo, err := client.GetSiteInfo(site.ID)

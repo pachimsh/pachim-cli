@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/pachimsh/cli/internal/api"
+	"github.com/pachimsh/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +31,7 @@ func Execute() {
 
 func init() {
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
-	rootCmd.PersistentFlags().StringVar(&apiURLFlag, "api-url", "", "Override API base URL (default: PACHIM_API_URL env or https://api.pachim.sh)")
+	rootCmd.PersistentFlags().StringVar(&apiURLFlag, "api-url", "", "Override API base URL (default: https://api.pachim.sh)")
 	rootCmd.PersistentFlags().StringVar(&profileFlag, "profile", "", "Use a specific profile (default: \"default\")")
 }
 
@@ -39,8 +40,8 @@ func resolveBaseURL() string {
 		return apiURLFlag
 	}
 
-	if envURL := os.Getenv("PACHIM_API_URL"); envURL != "" {
-		return envURL
+	if cfg, err := config.LoadGlobalConfig(); err == nil && cfg.APIURL != "" {
+		return cfg.APIURL
 	}
 
 	return api.DefaultBaseURL

@@ -36,10 +36,6 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	baseURL := resolveBaseURL()
-	if creds.APIUrl != "" {
-		baseURL = creds.APIUrl
-	}
-
 	client := api.NewClient(baseURL, creds.Token)
 
 	color.Yellow("Fetching your sites...")

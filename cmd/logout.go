@@ -27,10 +27,6 @@ func runLogout(cmd *cobra.Command, args []string) error {
 	}
 
 	baseURL := resolveBaseURL()
-	if creds.APIUrl != "" {
-		baseURL = creds.APIUrl
-	}
-
 	client := api.NewClient(baseURL, creds.Token)
 	_ = client.Logout()
 

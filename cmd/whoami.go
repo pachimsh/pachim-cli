@@ -32,9 +32,6 @@ func runWhoami(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  Name:    %s\n", creds.Name)
 	fmt.Printf("  Email:   %s\n", creds.Email)
 	fmt.Printf("  Profile: %s\n", profile)
-	if creds.APIUrl != "" && creds.APIUrl != "https://api.pachim.sh" {
-		fmt.Printf("  API URL: %s\n", creds.APIUrl)
-	}
 	fmt.Println()
 
 	return nil

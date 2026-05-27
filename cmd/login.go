@@ -63,7 +63,6 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		Token:  loginResp.Token,
 		Email:  loginResp.User.Email,
 		Name:   loginResp.User.Name,
-		APIUrl: baseURL,
 	}
 
 	if err := config.SaveCredentials(profile, creds); err != nil {
