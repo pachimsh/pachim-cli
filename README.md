@@ -20,6 +20,10 @@ Install scripts try **mirrors.pachim.app** first, then fall back to **GitHub** i
 irm https://mirrors.pachim.app/cli/install.ps1 | iex
 ```
 
+**Windows (MSI):**
+
+Download `pachim_windows_amd64.msi` from [GitHub Releases](https://github.com/pachimsh/pachim-cli/releases) and run the installer. It installs `pachim.exe` and adds `C:\Program Files\Pachim` to system `PATH`.
+
 ### Package Managers
 
 **Homebrew (macOS / Linux):**
@@ -33,6 +37,12 @@ brew install pachimsh/homebrew-tap/pachim
 ```powershell
 scoop bucket add pachimsh https://github.com/pachimsh/scoop-bucket
 scoop install pachim
+```
+
+**WinGet (Windows):**
+
+```powershell
+winget install Pachim.PachimCLI
 ```
 
 ### Manual Download
@@ -137,6 +147,24 @@ Stored at `~/.pachim/profiles/<name>.json` (file permissions: 0600). Never commi
     }
   }
 }
+```
+
+## Development
+
+### Custom API URL
+
+For local development, override the API URL:
+
+```bash
+# Via environment variable
+export PACHIM_API_URL=http://localhost:8000
+pachim login
+
+# Via flag
+pachim --api-url http://localhost:8000 login
+
+# Via build-time injection
+go build -ldflags "-X main.apiBaseURL=http://localhost:8000" -o pachim .
 ```
 
 ### Build

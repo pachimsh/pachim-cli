@@ -26,11 +26,32 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Prepare release args
+        id: release_args
+        run: |
+          ARGS="release --clean --verbose"
+
+          if [ -n "${{ secrets.GH_PAT }}" ] && [ "${{ vars.ENABLE_SCOOP }}" = "true" ]; then
+            echo "Scoop publish is enabled."
+          else
+            echo "Scoop publish is disabled (set GH_PAT + ENABLE_SCOOP=true to enable)."
+            ARGS="$ARGS --skip=scoop"
+          fi
+
+          if [ -n "${{ secrets.GH_PAT }}" ] && [ "${{ vars.ENABLE_WINGET }}" = "true" ]; then
+            echo "Winget publish is enabled."
+          else
+            echo "Winget publish is disabled (set GH_PAT + ENABLE_WINGET=true to enable)."
+            ARGS="$ARGS --skip=winget"
+          fi
+
+          echo "args=$ARGS" >> "$GITHUB_OUTPUT"
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
-          args: release --clean --verbose
+          args: ${{ steps.release_args.outputs.args }}
         env:
           # Use GH_PAT only if you later need to push to other repos.
           GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
@@ -54,3 +75,42 @@ jobs:
           S3_FORCE_PATH_STYLE: ${{ vars.S3_FORCE_PATH_STYLE }}
           S3_PUBLIC_BASE_URL: ${{ vars.S3_PUBLIC_BASE_URL }}
         run: bash .github/scripts/upload-s3.sh
+
+  windows_msi:
+    needs: release
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build Windows binary for MSI
+        shell: pwsh
+        run: |
+          $tagVersion = "${{ github.ref_name }}"
+          go build -ldflags "-s -w -X github.com/pachimsh/cli/cmd.version=$tagVersion -X main.apiBaseURL=https://api.pachim.sh" -o installer/windows/pachim.exe .
+
+      - name: Install WiX Toolset
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 4.*
+          echo "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Build MSI installer
+        shell: pwsh
+        run: |
+          $productVersion = "${{ github.ref_name }}".TrimStart("v")
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          wix build installer/windows/pachim.wxs -arch x64 -d ProductVersion=$productVersion -d SourceDir=installer/windows -o dist/pachim_windows_amd64.msi
+
+      - name: Upload MSI to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" "dist/pachim_windows_amd64.msi" --clobber

@@ -47,5 +47,32 @@ release:
   prerelease: auto
   mode: append
 
-# Homebrew/Scoop: add homebrew_casks (v2.16+) when tap repos are ready.
+scoops:
+  - repository:
+      owner: pachimsh
+      name: scoop-bucket
+    homepage: "https://pachim.sh"
+    description: "Deploy your projects to Pachim servers"
+    license: "MIT"
+
+winget:
+  - name: pachim
+    package_identifier: Pachim.PachimCLI
+    publisher: Pachim
+    short_description: "Deploy your projects to Pachim servers"
+    license: "MIT"
+    homepage: "https://pachim.sh"
+    repository:
+      owner: pachimsh
+      name: winget-pkgs
+      branch: "pachim-{{.Version}}"
+      pull_request:
+        enabled: true
+        draft: false
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master
+
+# Homebrew can be added later via homebrew_casks (GoReleaser v2.16+).
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json

@@ -77,6 +77,7 @@ CDN should point `mirrors.pachim.app` to bucket `pachim-mirrors` (root). Files l
 | `pachimsh/pachim-cli` | Main code + Actions |
 | `pachimsh/homebrew-tap` | Empty (GoReleaser fills) |
 | `pachimsh/scoop-bucket` | Empty (GoReleaser fills) |
+| `pachimsh/winget-pkgs` | Fork of `microsoft/winget-pkgs` (GoReleaser opens PRs) |
 
 **Settings → Actions → General → Workflow permissions:** Read and write.
 
@@ -104,13 +105,16 @@ CDN should point `mirrors.pachim.app` to bucket `pachim-mirrors` (root). Files l
 | Variable | Value |
 |----------|--------|
 | `S3_MIRROR_ENABLED` | `true` |
-| `ENABLE_PACKAGE_MANAGERS` | `true` — only after `homebrew-tap` + `scoop-bucket` exist **and** `GH_PAT` is set |
+| `ENABLE_SCOOP` | `true` — only after `scoop-bucket` exists **and** `GH_PAT` is set |
+| `ENABLE_WINGET` | `true` — only after `winget-pkgs` fork exists **and** `GH_PAT` is set |
 | `S3_PREFIX` | `cli` (optional, default in script is `cli`) |
 | `S3_PUBLIC_BASE_URL` | `https://mirrors.pachim.app/cli` (documentation only) |
 | `S3_ACL` | `public-read` (only if your provider needs ACL on upload; Arvan often uses bucket policy instead) |
 | `S3_FORCE_PATH_STYLE` | `true` (for MinIO; leave empty for Arvan) |
 
-By default, GoReleaser **skips** Homebrew/Scoop so the first release only needs the built-in `GITHUB_TOKEN`. Enable package managers later with both `GH_PAT` and `ENABLE_PACKAGE_MANAGERS=true`.
+By default, GoReleaser **skips Scoop and Winget** so the first release only needs the built-in `GITHUB_TOKEN`.  
+Enable Scoop publishing with `GH_PAT` + `ENABLE_SCOOP=true`.  
+Enable Winget publishing with `GH_PAT` + `ENABLE_WINGET=true` (requires `pachimsh/winget-pkgs` fork).
 
 ---
 
