@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"golang.org/x/mod/semver"
 )
 
 const (
@@ -163,11 +162,7 @@ func isNewer(current, latest string) bool {
 	current = normalizeVersion(current)
 	latest = normalizeVersion(latest)
 
-	if !semver.IsValid(current) || !semver.IsValid(latest) {
-		return latest != current && latest > current
-	}
-
-	return semver.Compare(current, latest) < 0
+	return compareSemver(current, latest) < 0
 }
 
 func normalizeVersion(v string) string {
@@ -179,6 +174,67 @@ func normalizeVersion(v string) string {
 		v = "v" + v
 	}
 	return v
+}
+
+func compareSemver(a, b string) int {
+	pa, oka := parseSemver(a)
+	pb, okb := parseSemver(b)
+
+	if !oka || !okb {
+		switch {
+		case a < b:
+			return -1
+		case a > b:
+			return 1
+		default:
+			return 0
+		}
+	}
+
+	for i := 0; i < 3; i++ {
+		if pa[i] < pb[i] {
+			return -1
+		}
+		if pa[i] > pb[i] {
+			return 1
+		}
+	}
+
+	return 0
+}
+
+func parseSemver(v string) ([3]int, bool) {
+	var out [3]int
+
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	if v == "" {
+		return out, false
+	}
+
+	// Remove pre-release/build metadata for comparison.
+	if idx := strings.IndexAny(v, "-+"); idx >= 0 {
+		v = v[:idx]
+	}
+
+	parts := strings.Split(v, ".")
+	if len(parts) < 2 {
+		return out, false
+	}
+
+	for i := 0; i < 3; i++ {
+		if i >= len(parts) {
+			out[i] = 0
+			continue
+		}
+
+		n := 0
+		if _, err := fmt.Sscanf(parts[i], "%d", &n); err != nil {
+			return out, false
+		}
+		out[i] = n
+	}
+
+	return out, true
 }
 
 func readCache() (string, bool) {
