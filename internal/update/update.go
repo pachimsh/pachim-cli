@@ -59,6 +59,11 @@ func MaybePromptAndUpdate(currentVersion string, args []string) error {
 
 	fmt.Println()
 	color.Yellow("⚠ A new version of pachim is available: %s (you have %s)", latest, currentVersion)
+	if runtime.GOOS == "windows" {
+		if exe, err := os.Executable(); err == nil && isMSIInstallPath(exe) {
+			fmt.Println("  This update may request administrator permission (MSI install).")
+		}
+	}
 	fmt.Print("Would you like to update now? [y/N]: ")
 
 	reader := bufio.NewReader(os.Stdin)
@@ -247,6 +252,10 @@ func applyUpdate(ctx context.Context, version string, args []string) error {
 		return err
 	}
 
+	if goos == "windows" && isMSIInstallPath(executable) {
+		return applyMSIUpdate(ctx, version, goarch, executable, args)
+	}
+
 	tmpDir, err := os.MkdirTemp("", "pachim-update-*")
 	if err != nil {
 		return err
@@ -280,6 +289,42 @@ func applyUpdate(ctx context.Context, version string, args []string) error {
 	return replaceExecutable(executable, newBinaryPath)
 }
 
+func applyMSIUpdate(ctx context.Context, version, goarch, executable string, args []string) error {
+	tmpDir, err := os.MkdirTemp("", "pachim-msi-update-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	msiName := msiFilename(goarch)
+	msiPath := filepath.Join(tmpDir, msiName)
+	msiURLs := []string{
+		fmt.Sprintf("%s/%s/%s", mirrorBase, version, msiName),
+		fmt.Sprintf("%s/%s", mirrorBase, msiName),
+		fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", githubRepo, version, msiName),
+	}
+
+	if err := downloadFromURLs(ctx, msiURLs, msiPath); err != nil {
+		return fmt.Errorf("failed to download MSI: %w", err)
+	}
+
+	if err := runMSIInstaller(msiPath); err != nil {
+		return err
+	}
+
+	// Restart command using the same executable path after MSI upgrade.
+	restart(args)
+	return nil
+}
+
+func msiFilename(goarch string) string {
+	if goarch == "arm64" {
+		return "pachim_windows_arm64.msi"
+	}
+
+	return "pachim_windows_amd64.msi"
+}
+
 func downloadRelease(ctx context.Context, version, goos, goarch, dest string) error {
 	filename := archiveFilename(version, goos, goarch)
 	urls := []string{
@@ -287,6 +332,10 @@ func downloadRelease(ctx context.Context, version, goos, goarch, dest string) er
 		fmt.Sprintf("https://github.com/%s/releases/download/%s/%s", githubRepo, version, filename),
 	}
 
+	return downloadFromURLs(ctx, urls, dest)
+}
+
+func downloadFromURLs(ctx context.Context, urls []string, dest string) error {
 	client := &http.Client{Timeout: httpTimeout}
 
 	var lastErr error
@@ -332,6 +381,35 @@ func downloadRelease(ctx context.Context, version, goos, goarch, dest string) er
 	}
 
 	return fmt.Errorf("download failed: %w", lastErr)
+}
+
+func isMSIInstallPath(executable string) bool {
+	clean := strings.ToLower(filepath.Clean(executable))
+
+	return strings.Contains(clean, `\program files\pachim\`) ||
+		strings.Contains(clean, `\program files (x86)\pachim\`)
+}
+
+func runMSIInstaller(msiPath string) error {
+	if runtime.GOOS != "windows" {
+		return fmt.Errorf("MSI installer is only supported on Windows")
+	}
+
+	escapedPath := strings.ReplaceAll(msiPath, `'`, `''`)
+	psScript := fmt.Sprintf(
+		"$msi='%s'; Start-Process msiexec.exe -Verb RunAs -Wait -ArgumentList @('/i', $msi, '/passive', '/norestart')",
+		escapedPath,
+	)
+
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("msi update failed: %w", err)
+	}
+
+	return nil
 }
 
 func archiveFilename(version, goos, goarch string) string {
