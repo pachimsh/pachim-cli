@@ -33,6 +33,7 @@ func Execute() {
 func init() {
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 	rootCmd.PersistentFlags().StringVar(&apiURLFlag, "api-url", "", "Override API base URL (default: https://api.pachim.sh)")
+	_ = rootCmd.PersistentFlags().MarkHidden("api-url")
 	rootCmd.PersistentFlags().StringVar(&profileFlag, "profile", "", "Use a specific profile (default: \"default\")")
 
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {

@@ -74,6 +74,16 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	wasFirstDeploy := siteInfo.SetupType == ""
+
+	if decision := resolveActiveDeploymentBeforePush(siteInfo); decision == pushCancelled {
+		color.Cyan("Cancelled.")
+		return nil
+	} else if decision == pushWatchExisting {
+		fmt.Println()
+		return pollDeployment(client, site.ID, siteInfo.ActiveDeployment.ID, wasFirstDeploy)
+	}
+
 	if !confirmGitMergeBeforePush(client, site.ID, siteInfo) {
 		return nil
 	}
@@ -111,9 +121,55 @@ func runPush(cmd *cobra.Command, args []string) error {
 	color.Green("✓ Deployment started (ID: %s)", deployResp.DeploymentID)
 	fmt.Println()
 
-	color.Yellow("⟳ Waiting for deployment to complete...")
-	wasFirstDeploy := siteInfo.SetupType == ""
 	return pollDeployment(client, site.ID, deployResp.DeploymentID, wasFirstDeploy)
+}
+
+type pushDecision int
+
+const (
+	pushContinue pushDecision = iota
+	pushWatchExisting
+	pushCancelled
+)
+
+func resolveActiveDeploymentBeforePush(siteInfo *api.SiteInfo) pushDecision {
+	active := siteInfo.ActiveDeployment
+	if active == nil {
+		return pushContinue
+	}
+
+	fmt.Println()
+	color.Yellow("⚠ This site already has an active deployment.")
+	fmt.Printf("  Deployment ID: %s\n", active.ID)
+	fmt.Printf("  Status: %s\n", active.Status)
+	if active.InitiatedBy != "" {
+		fmt.Printf("  Initiated by: %s\n", active.InitiatedBy)
+	}
+	if active.StartedAt != "" {
+		fmt.Printf("  Started at: %s\n", active.StartedAt)
+	}
+	fmt.Println()
+	fmt.Println("  [W] Watch current deployment")
+	fmt.Println("  [Q] Queue new deployment anyway")
+	fmt.Println("  [C] Cancel")
+	fmt.Println()
+	fmt.Print("Choose an option [W/q/c]: ")
+
+	reader := bufio.NewReader(os.Stdin)
+	answer, _ := reader.ReadString('\n')
+	answer = strings.TrimSpace(strings.ToLower(answer))
+
+	switch answer {
+	case "", "w", "watch":
+		return pushWatchExisting
+	case "q", "queue":
+		fmt.Println()
+		color.Cyan("Queueing a new deployment...")
+		fmt.Println()
+		return pushContinue
+	default:
+		return pushCancelled
+	}
 }
 
 func confirmGitMergeBeforePush(client *api.Client, siteID string, siteInfo *api.SiteInfo) bool {
@@ -170,20 +226,42 @@ func enableGitMerge(client *api.Client, siteID string) bool {
 }
 
 func pollDeployment(client *api.Client, siteID, deploymentID string, wasFirstDeploy bool) error {
-	maxAttempts := 60
-	interval := 5 * time.Second
+	const pollInterval = 2 * time.Second
+	const maxPollDuration = 2 * time.Hour // deployments can take up to ~1 hour
 
-	for i := 0; i < maxAttempts; i++ {
-		time.Sleep(interval)
+	color.Yellow("⟳ Waiting for deployment to complete...")
+	fmt.Println()
+
+	streamer := newDeployOutputStreamer()
+	onStatusLine := false
+	deadline := time.Now().Add(maxPollDuration)
+
+	for time.Now().Before(deadline) {
+		time.Sleep(pollInterval)
 
 		status, err := client.GetDeploymentStatus(siteID, deploymentID)
 		if err != nil {
+			if onStatusLine {
+				fmt.Println()
+				onStatusLine = false
+			}
 			color.Yellow("  Checking status... (retrying)")
 			continue
 		}
 
 		switch status.Status {
+		case "deploying":
+			if onStatusLine {
+				fmt.Println()
+				onStatusLine = false
+			}
+			streamer.Write(status.Output, false)
 		case "finished":
+			if onStatusLine {
+				fmt.Println()
+				onStatusLine = false
+			}
+			streamer.Write(status.Output, true)
 			fmt.Println()
 			color.Green("✓ Deployment completed successfully!")
 			if status.FinishedAt != "" {
@@ -193,26 +271,76 @@ func pollDeployment(client *api.Client, siteID, deploymentID string, wasFirstDep
 			offerGitPush()
 			return nil
 		case "failed":
+			if onStatusLine {
+				fmt.Println()
+				onStatusLine = false
+			}
+			streamer.Write(status.Output, true)
 			fmt.Println()
 			color.Red("✗ Deployment failed.")
-			if status.Output != "" {
-				fmt.Println()
-				color.Yellow("── Deployment Log (last lines) ──")
-				fmt.Println(status.Output)
-				color.Yellow("─────────────────────────────────")
-			}
 			return nil
-		case "deploying":
-			fmt.Printf("\r  Status: deploying...   ")
 		case "queued":
 			fmt.Printf("\r  Status: queued...      ")
+			onStatusLine = true
 		default:
 			fmt.Printf("\r  Status: %s   ", status.Status)
+			onStatusLine = true
 		}
 	}
 
+	if onStatusLine {
+		fmt.Println()
+	}
+	streamer.Write("", true)
 	color.Yellow("Timed out waiting for deployment. Check the Pachim dashboard for status.")
 	return nil
+}
+
+type deployOutputStreamer struct {
+	printedBytes int
+	lineBuffer   strings.Builder
+}
+
+func newDeployOutputStreamer() *deployOutputStreamer {
+	return &deployOutputStreamer{}
+}
+
+func (s *deployOutputStreamer) Write(output string, final bool) {
+	if len(output) < s.printedBytes {
+		s.printedBytes = 0
+		s.lineBuffer.Reset()
+	}
+
+	if len(output) <= s.printedBytes && !final {
+		return
+	}
+
+	chunk := output[s.printedBytes:]
+	s.printedBytes = len(output)
+
+	content := s.lineBuffer.String() + chunk
+	s.lineBuffer.Reset()
+
+	if content == "" {
+		return
+	}
+
+	lines := strings.Split(content, "\n")
+
+	if !final && !strings.HasSuffix(content, "\n") && len(lines) > 0 {
+		s.lineBuffer.WriteString(lines[len(lines)-1])
+		lines = lines[:len(lines)-1]
+	}
+
+	for _, line := range lines {
+		line = strings.TrimRight(line, "\r")
+		fmt.Println(line)
+	}
+
+	if final && s.lineBuffer.Len() > 0 {
+		fmt.Println(s.lineBuffer.String())
+		s.lineBuffer.Reset()
+	}
 }
 
 func offerGitMergeAfterFirstDeploy(client *api.Client, siteID string, wasFirstDeploy bool) {

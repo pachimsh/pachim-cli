@@ -48,11 +48,19 @@ type Site struct {
 	} `json:"server"`
 }
 
+type ActiveDeployment struct {
+	ID          string `json:"id"`
+	Status      string `json:"status"`
+	StartedAt   string `json:"started_at"`
+	InitiatedBy string `json:"initiated_by"`
+}
+
 type SiteInfo struct {
-	ID        string `json:"id"`
-	Domain    string `json:"domain"`
-	SetupType string `json:"setup_type"`
-	GitMerge  bool   `json:"git_merge"`
+	ID               string            `json:"id"`
+	Domain           string            `json:"domain"`
+	SetupType        string            `json:"setup_type"`
+	GitMerge         bool              `json:"git_merge"`
+	ActiveDeployment *ActiveDeployment `json:"active_deployment"`
 }
 
 type DeployResponse struct {
@@ -67,6 +75,22 @@ type DeploymentStatus struct {
 	StartedAt  string `json:"started_at"`
 	FinishedAt string `json:"finished_at"`
 	Output     string `json:"output"`
+}
+
+type DeploymentListItem struct {
+	ID          string `json:"id"`
+	Status      string `json:"status"`
+	Type        string `json:"type"`
+	InitiatedBy string `json:"initiated_by"`
+	StartedAt   string `json:"started_at"`
+	FinishedAt  string `json:"finished_at"`
+	CreatedAt   string `json:"created_at"`
+}
+
+type DeploymentsListResponse struct {
+	SiteID      string               `json:"site_id"`
+	Domain      string               `json:"domain"`
+	Deployments []DeploymentListItem `json:"deployments"`
 }
 
 func NewClient(baseURL, token string) *Client {
@@ -260,6 +284,22 @@ func (c *Client) GetDeploymentStatus(siteID, deploymentID string) (*DeploymentSt
 	}
 
 	return &status, nil
+}
+
+func (c *Client) ListDeployments(siteID string, limit int) (*DeploymentsListResponse, error) {
+	url := fmt.Sprintf("/cli/sites/%s/deployments?limit=%d", siteID, limit)
+
+	resp, err := c.get(url)
+	if err != nil {
+		return nil, err
+	}
+
+	var result DeploymentsListResponse
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse deployments: %w", err)
+	}
+
+	return &result, nil
 }
 
 func (c *Client) get(path string) (*APIResponse, error) {
