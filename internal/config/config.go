@@ -13,8 +13,9 @@ type Credentials struct {
 }
 
 type SiteConfig struct {
-	ID     string `json:"site_id"`
-	Domain string `json:"domain"`
+	ID           string `json:"site_id"`
+	Domain       string `json:"domain"`
+	DeployBranch string `json:"deploy_branch,omitempty"`
 }
 
 type ProjectConfig struct {

@@ -35,12 +35,13 @@ type LoginResponse struct {
 }
 
 type Site struct {
-	ID         string `json:"id"`
-	Domain     string `json:"domain"`
-	AppType    string `json:"app_type"`
-	SetupType  string `json:"setup_type"`
-	RepoStatus string `json:"repo_status"`
-	GitMerge   bool   `json:"git_merge"`
+	ID           string `json:"id"`
+	Domain       string `json:"domain"`
+	AppType      string `json:"app_type"`
+	SetupType    string `json:"setup_type"`
+	RepoStatus   string `json:"repo_status"`
+	DeployBranch string `json:"deploy_branch"`
+	GitMerge     bool   `json:"git_merge"`
 	Server     struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
@@ -59,6 +60,7 @@ type SiteInfo struct {
 	ID               string            `json:"id"`
 	Domain           string            `json:"domain"`
 	SetupType        string            `json:"setup_type"`
+	DeployBranch     string            `json:"deploy_branch"`
 	GitMerge         bool              `json:"git_merge"`
 	ActiveDeployment *ActiveDeployment `json:"active_deployment"`
 }
@@ -66,6 +68,12 @@ type SiteInfo struct {
 type DeployResponse struct {
 	DeploymentID string `json:"deployment_id"`
 	Status       string `json:"status"`
+}
+
+type DeployUploadOptions struct {
+	Branch              string
+	CommitHash          string
+	SaveBranchAsDefault bool
 }
 
 type DeploymentStatus struct {
@@ -175,11 +183,11 @@ func (c *Client) ToggleGitMerge(siteID string) (bool, error) {
 	return result.GitMerge, nil
 }
 
-func (c *Client) Deploy(siteID, zipPath string) (*DeployResponse, error) {
-	return c.DeployWithProgress(siteID, zipPath, nil)
+func (c *Client) Deploy(siteID, zipPath string, opts *DeployUploadOptions) (*DeployResponse, error) {
+	return c.DeployWithProgress(siteID, zipPath, opts, nil)
 }
 
-func (c *Client) DeployWithProgress(siteID, zipPath string, onProgress func(int)) (*DeployResponse, error) {
+func (c *Client) DeployWithProgress(siteID, zipPath string, opts *DeployUploadOptions, onProgress func(int)) (*DeployResponse, error) {
 	file, err := os.Open(zipPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open zip file: %w", err)
@@ -198,6 +206,27 @@ func (c *Client) DeployWithProgress(siteID, zipPath string, onProgress func(int)
 
 	go func() {
 		defer pw.Close()
+
+		if opts != nil {
+			if opts.Branch != "" {
+				if err := writer.WriteField("branch", opts.Branch); err != nil {
+					errCh <- err
+					return
+				}
+			}
+			if opts.CommitHash != "" {
+				if err := writer.WriteField("commit_hash", opts.CommitHash); err != nil {
+					errCh <- err
+					return
+				}
+			}
+			if opts.SaveBranchAsDefault {
+				if err := writer.WriteField("save_branch_as_default", "1"); err != nil {
+					errCh <- err
+					return
+				}
+			}
+		}
 
 		part, err := writer.CreateFormFile("project_zip", "project.zip")
 		if err != nil {
@@ -250,7 +279,7 @@ func (c *Client) DeployWithProgress(siteID, zipPath string, onProgress func(int)
 	respBody, _ := io.ReadAll(httpResp.Body)
 
 	if httpResp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("deploy failed (HTTP %d): %s", httpResp.StatusCode, string(respBody))
+		return nil, parseHTTPError(httpResp.StatusCode, respBody)
 	}
 
 	var apiResp APIResponse
@@ -323,15 +352,15 @@ func (c *Client) get(path string) (*APIResponse, error) {
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode == 401 {
-		return nil, fmt.Errorf("authentication failed. Please run: pachim login")
+		return nil, parseHTTPError(resp.StatusCode, body)
 	}
 
 	if resp.StatusCode == 429 {
-		return nil, fmt.Errorf("rate limited. Please wait and try again")
+		return nil, parseHTTPError(resp.StatusCode, body)
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("request failed (HTTP %d): %s", resp.StatusCode, string(body))
+		return nil, parseHTTPError(resp.StatusCode, body)
 	}
 
 	var apiResp APIResponse
@@ -373,15 +402,15 @@ func (c *Client) postJSON(path string, payload interface{}) (*APIResponse, error
 	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode == 401 {
-		return nil, fmt.Errorf("authentication failed. Please run: pachim login")
+		return nil, parseHTTPError(resp.StatusCode, body)
 	}
 
 	if resp.StatusCode == 429 {
-		return nil, fmt.Errorf("rate limited. Please wait and try again")
+		return nil, parseHTTPError(resp.StatusCode, body)
 	}
 
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("request failed (HTTP %d): %s", resp.StatusCode, string(body))
+		return nil, parseHTTPError(resp.StatusCode, body)
 	}
 
 	var apiResp APIResponse

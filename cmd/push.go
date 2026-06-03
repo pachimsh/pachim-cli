@@ -13,11 +13,14 @@ import (
 	"github.com/pachimsh/cli/internal/api"
 	"github.com/pachimsh/cli/internal/archive"
 	"github.com/pachimsh/cli/internal/config"
+	"github.com/pachimsh/cli/internal/git"
 	"github.com/pachimsh/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
 var pushSiteFlag string
+var pushBranchFlag string
+var pushSaveBranchFlag bool
 
 var pushCmd = &cobra.Command{
 	Use:   "push",
@@ -29,6 +32,8 @@ and triggers a deployment on the selected site.`,
 
 func init() {
 	pushCmd.Flags().StringVar(&pushSiteFlag, "site", "", "Target site alias (from .pachim.json)")
+	pushCmd.Flags().StringVar(&pushBranchFlag, "branch", "", "Git branch to deploy (defaults to current checkout)")
+	pushCmd.Flags().BoolVar(&pushSaveBranchFlag, "save-branch", false, "Save deploy branch as site default on Pachim")
 	rootCmd.AddCommand(pushCmd)
 }
 
@@ -70,7 +75,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 
 	siteInfo, err := client.GetSiteInfo(site.ID)
 	if err != nil {
-		color.Red("Failed to fetch site info: %s", err)
+		ui.PrintAPIError("Failed to fetch site info", err)
 		return nil
 	}
 
@@ -93,6 +98,8 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get working directory: %w", err)
 	}
 
+	deployOpts := resolveDeployUploadOptions(cwd, site, siteInfo)
+
 	tmpDir := os.TempDir()
 	zipPath := filepath.Join(tmpDir, fmt.Sprintf("pachim-deploy-%d.zip", time.Now().UnixNano()))
 	defer os.Remove(zipPath)
@@ -111,10 +118,10 @@ func runPush(cmd *cobra.Command, args []string) error {
 	var deployResp *api.DeployResponse
 	if err := ui.RunWithProgress("Uploading and starting deployment...", "Upload complete", func(setProgress func(int)) error {
 		var deployErr error
-		deployResp, deployErr = client.DeployWithProgress(site.ID, zipPath, setProgress)
+		deployResp, deployErr = client.DeployWithProgress(site.ID, zipPath, deployOpts, setProgress)
 		return deployErr
 	}); err != nil {
-		color.Red("Deployment failed: %s", err)
+		ui.PrintAPIError("Deployment failed", err)
 		return nil
 	}
 
@@ -131,6 +138,49 @@ const (
 	pushWatchExisting
 	pushCancelled
 )
+
+func resolveDeployUploadOptions(cwd string, site config.SiteConfig, siteInfo *api.SiteInfo) *api.DeployUploadOptions {
+	opts := &api.DeployUploadOptions{}
+
+	branch := strings.TrimSpace(pushBranchFlag)
+	if branch == "" {
+		branch = strings.TrimSpace(site.DeployBranch)
+	}
+
+	if head, ok := git.CurrentHead(cwd); ok {
+		if branch == "" {
+			branch = head.Branch
+		}
+		if head.Commit != "" {
+			opts.CommitHash = head.Commit
+		}
+	}
+
+	if branch == "" {
+		branch = strings.TrimSpace(siteInfo.DeployBranch)
+	}
+
+	opts.Branch = branch
+	opts.SaveBranchAsDefault = pushSaveBranchFlag
+
+	if branch != "" || opts.CommitHash != "" {
+		label := branch
+		if label == "" {
+			label = "(detached)"
+		}
+		if opts.CommitHash != "" {
+			short := opts.CommitHash
+			if len(short) > 7 {
+				short = short[:7]
+			}
+			fmt.Printf("  Deploy branch: %s @ %s\n", label, short)
+		} else {
+			fmt.Printf("  Deploy branch: %s\n", label)
+		}
+	}
+
+	return opts
+}
 
 func resolveActiveDeploymentBeforePush(siteInfo *api.SiteInfo) pushDecision {
 	active := siteInfo.ActiveDeployment
