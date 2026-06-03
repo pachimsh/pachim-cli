@@ -13,10 +13,6 @@ var logoutCmd = &cobra.Command{
 	RunE:  runLogout,
 }
 
-func init() {
-	rootCmd.AddCommand(logoutCmd)
-}
-
 func runLogout(cmd *cobra.Command, args []string) error {
 	profile := resolveProfile()
 

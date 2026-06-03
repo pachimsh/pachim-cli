@@ -15,10 +15,6 @@ var profilesCmd = &cobra.Command{
 	RunE:  runProfiles,
 }
 
-func init() {
-	rootCmd.AddCommand(profilesCmd)
-}
-
 func runProfiles(cmd *cobra.Command, args []string) error {
 	profiles, err := config.ListProfiles()
 	if err != nil || len(profiles) == 0 {

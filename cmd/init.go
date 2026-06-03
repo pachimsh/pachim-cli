@@ -22,10 +22,6 @@ Creates a .pachim.json config file in the project root.`,
 	RunE: runInit,
 }
 
-func init() {
-	rootCmd.AddCommand(initCmd)
-}
-
 func runInit(cmd *cobra.Command, args []string) error {
 	profile := resolveProfile()
 

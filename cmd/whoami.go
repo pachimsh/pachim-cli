@@ -14,10 +14,6 @@ var whoamiCmd = &cobra.Command{
 	RunE:  runWhoami,
 }
 
-func init() {
-	rootCmd.AddCommand(whoamiCmd)
-}
-
 func runWhoami(cmd *cobra.Command, args []string) error {
 	profile := resolveProfile()
 

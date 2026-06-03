@@ -19,7 +19,9 @@ var rootCmd = &cobra.Command{
 	Use:   "pachim",
 	Short: "Pachim CLI - Deploy your projects with ease",
 	Long: `Pachim CLI allows you to deploy your projects directly to your servers
-managed by Pachim. Authenticate, select your site, and push changes seamlessly.`,
+managed by Pachim. Authenticate, select your site, and push changes seamlessly.
+
+Use "pachim self-update" to upgrade the CLI to the latest release.`,
 	Version: version,
 }
 

@@ -16,10 +16,6 @@ var sitesCmd = &cobra.Command{
 	RunE:  runSites,
 }
 
-func init() {
-	rootCmd.AddCommand(sitesCmd)
-}
-
 func runSites(cmd *cobra.Command, args []string) error {
 	profile := resolveProfile()
 

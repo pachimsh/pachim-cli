@@ -21,10 +21,6 @@ If no alias is provided, an interactive selection is shown.`,
 	RunE: runUse,
 }
 
-func init() {
-	rootCmd.AddCommand(useCmd)
-}
-
 func runUse(cmd *cobra.Command, args []string) error {
 	projCfg, err := config.LoadProjectConfig()
 	if err != nil {

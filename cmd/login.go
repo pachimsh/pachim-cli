@@ -20,10 +20,6 @@ var loginCmd = &cobra.Command{
 	RunE:  runLogin,
 }
 
-func init() {
-	rootCmd.AddCommand(loginCmd)
-}
-
 func runLogin(cmd *cobra.Command, args []string) error {
 	profile := resolveProfile()
 	reader := bufio.NewReader(os.Stdin)

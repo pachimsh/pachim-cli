@@ -100,10 +100,11 @@ pachim push --site staging
 ### Other commands
 
 ```bash
-pachim sites       # List all your sites
-pachim whoami      # Show logged-in user
-pachim profiles    # List all profiles
-pachim logout      # Log out and remove stored credentials
+pachim sites         # List all your sites
+pachim whoami        # Show logged-in user
+pachim profiles      # List all profiles
+pachim self-update   # Update CLI to the latest release
+pachim logout        # Log out and remove stored credentials
 ```
 
 ## Multiple Profiles

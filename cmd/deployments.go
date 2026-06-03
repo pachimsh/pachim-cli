@@ -25,7 +25,6 @@ var deploymentsCmd = &cobra.Command{
 func init() {
 	deploymentsCmd.Flags().StringVar(&deploymentsSiteFlag, "site", "", "Target site alias (from .pachim.json)")
 	deploymentsCmd.Flags().IntVar(&deploymentsLimitFlag, "limit", 16, "Maximum number of deployments to show")
-	rootCmd.AddCommand(deploymentsCmd)
 }
 
 func runDeployments(cmd *cobra.Command, args []string) error {

@@ -34,7 +34,6 @@ func init() {
 	pushCmd.Flags().StringVar(&pushSiteFlag, "site", "", "Target site alias (from .pachim.json)")
 	pushCmd.Flags().StringVar(&pushBranchFlag, "branch", "", "Git branch to deploy (defaults to current checkout)")
 	pushCmd.Flags().BoolVar(&pushSaveBranchFlag, "save-branch", false, "Save deploy branch as site default on Pachim")
-	rootCmd.AddCommand(pushCmd)
 }
 
 func runPush(cmd *cobra.Command, args []string) error {

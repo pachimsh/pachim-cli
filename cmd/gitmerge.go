@@ -24,7 +24,6 @@ completely replaces the existing code.`,
 func init() {
 	gitMergeCmd.Flags().BoolVar(&gitMergeEnableFlag, "enable", false, "Enable git merge for uploads")
 	gitMergeCmd.Flags().BoolVar(&gitMergeDisableFlag, "disable", false, "Disable git merge for uploads")
-	rootCmd.AddCommand(gitMergeCmd)
 }
 
 func runGitMerge(cmd *cobra.Command, args []string) error {
