@@ -45,7 +45,7 @@ func init() {
 }
 
 func shouldSkipUpdateCheck(cmd *cobra.Command) bool {
-	if cmd.Name() == "__set-api-url" {
+	if cmd.Name() == "__set-api-url" || cmd.Name() == "self-update" {
 		return true
 	}
 

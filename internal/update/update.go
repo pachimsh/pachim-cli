@@ -33,10 +33,12 @@ type checkCache struct {
 	CheckedAt time.Time `json:"checked_at"`
 }
 
+const selfUpdateTimeout = 10 * time.Minute
+
 // MaybePromptAndUpdate checks for a newer release and optionally self-updates.
 // On successful update it re-executes the same command and does not return.
 func MaybePromptAndUpdate(currentVersion string, args []string) error {
-	if currentVersion == "" || currentVersion == "dev" {
+	if shouldSkipVersionCheck(currentVersion) {
 		return nil
 	}
 
@@ -57,12 +59,8 @@ func MaybePromptAndUpdate(currentVersion string, args []string) error {
 	}
 
 	fmt.Println()
-	color.Yellow("⚠ A new version of pachim is available: %s (you have %s)", latest, currentVersion)
-	if runtime.GOOS == "windows" {
-		if exe, err := os.Executable(); err == nil && isMSIInstallPath(exe) {
-			fmt.Println("  This update may request administrator permission (MSI install).")
-		}
-	}
+	color.Yellow("⚠ A new version of pachim is available: %s (you have %s)", latest, normalizeVersion(currentVersion))
+	printMSIAdminHint()
 	fmt.Print("Would you like to update now? [y/N]: ")
 
 	reader := bufio.NewReader(os.Stdin)
@@ -73,40 +71,102 @@ func MaybePromptAndUpdate(currentVersion string, args []string) error {
 		return nil
 	}
 
-	fmt.Println()
-	color.Cyan("⟳ Updating pachim to %s...", latest)
-
-	if err := applyUpdate(ctx, latest, args); err != nil {
+	if err := runUpdate(ctx, currentVersion, latest, args); err != nil {
 		color.Red("Update failed: %s", err)
 		fmt.Println("Continuing with the current version.")
 		fmt.Println()
+	}
+
+	return nil
+}
+
+// SelfUpdate checks for a newer release and updates without prompting.
+// On success it re-executes `pachim --version` and does not return.
+func SelfUpdate(currentVersion string) error {
+	if shouldSkipVersionCheck(currentVersion) {
+		return fmt.Errorf(
+			"self-update is not available for development builds (version: %q). Install a release from https://pachim.sh",
+			currentVersion,
+		)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), selfUpdateTimeout)
+	defer cancel()
+
+	latest, err := fetchLatestVersion(ctx)
+	if err != nil {
+		return fmt.Errorf("could not check for updates: %w", err)
+	}
+
+	current := normalizeVersion(currentVersion)
+
+	fmt.Printf("Current version: %s\n", current)
+	fmt.Printf("Latest version:  %s\n", latest)
+
+	if !isNewer(current, latest) {
+		color.Green("✓ pachim is already up to date.")
 		return nil
 	}
 
+	printMSIAdminHint()
+
+	restartArgs := []string{os.Args[0], "--version"}
+
+	return runUpdate(ctx, currentVersion, latest, restartArgs)
+}
+
+func shouldSkipVersionCheck(currentVersion string) bool {
+	return currentVersion == "" || currentVersion == "dev"
+}
+
+func printMSIAdminHint() {
+	if runtime.GOOS != "windows" {
+		return
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+
+	if isMSIInstallPath(exe) {
+		fmt.Println("  This update may request administrator permission (MSI install).")
+	}
+}
+
+func runUpdate(ctx context.Context, currentVersion, latest string, restartArgs []string) error {
+	fmt.Println()
+	color.Cyan("⟳ Updating pachim to %s...", latest)
+
+	if err := applyUpdate(ctx, latest, restartArgs); err != nil {
+		return fmt.Errorf("update failed: %w", err)
+	}
+
 	color.Green("✓ Updated to %s", latest)
-	fmt.Println("⟳ Restarting command...")
+	fmt.Println("⟳ Verifying new version...")
 	fmt.Println()
 
-	restart(args)
+	restart(restartArgs)
+
 	return nil
 }
 
 func fetchLatestVersion(ctx context.Context) (string, error) {
+	// Always refresh from mirror: latest.txt is tiny and is the source of truth for releases.
+	if latest, err := fetchLatestFromMirror(ctx); err == nil && latest != "" {
+		writeCache(latest)
+
+		return latest, nil
+	}
+
 	if cached, ok := readCache(); ok {
 		return cached, nil
 	}
 
-	latest, err := fetchLatestFromRemote(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	writeCache(latest)
-
-	return latest, nil
+	return fetchLatestFromGitHub(ctx)
 }
 
-func fetchLatestFromRemote(ctx context.Context) (string, error) {
+func fetchLatestFromMirror(ctx context.Context) (string, error) {
 	client := &http.Client{Timeout: httpTimeout}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, mirrorBase+"/latest.txt", nil)
@@ -115,26 +175,39 @@ func fetchLatestFromRemote(ctx context.Context) (string, error) {
 	}
 
 	resp, err := client.Do(req)
-	if err == nil && resp.StatusCode == http.StatusOK {
-		body, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if readErr == nil {
-			if v := strings.TrimSpace(string(body)); v != "" {
-				return normalizeVersion(v), nil
-			}
-		}
-	} else if resp != nil {
-		resp.Body.Close()
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("mirror returned %d", resp.StatusCode)
 	}
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	v := strings.TrimSpace(string(body))
+	if v == "" {
+		return "", fmt.Errorf("empty latest.txt from mirror")
+	}
+
+	return normalizeVersion(v), nil
+}
+
+func fetchLatestFromGitHub(ctx context.Context) (string, error) {
+	client := &http.Client{Timeout: httpTimeout}
+
 	githubURL := "https://api.github.com/repos/" + githubRepo + "/releases/latest"
-	req, err = http.NewRequestWithContext(ctx, http.MethodGet, githubURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, githubURL, nil)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	resp, err = client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -155,7 +228,10 @@ func fetchLatestFromRemote(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("empty tag_name from GitHub")
 	}
 
-	return normalizeVersion(payload.TagName), nil
+	latest := normalizeVersion(payload.TagName)
+	writeCache(latest)
+
+	return latest, nil
 }
 
 func isNewer(current, latest string) bool {
