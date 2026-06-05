@@ -9,6 +9,8 @@ func init() {
 }
 
 func registerCommands() {
+	initOutputFlags()
+
 	rootCmd.AddCommand(
 		loginCmd,
 		logoutCmd,
@@ -16,6 +18,8 @@ func registerCommands() {
 		profilesCmd,
 		initCmd,
 		useCmd,
+		linkCmd,
+		statusCmd,
 		pushCmd,
 		selfUpdateCmd,
 		deploymentsCmd,

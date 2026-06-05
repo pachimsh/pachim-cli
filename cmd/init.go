@@ -11,6 +11,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/pachimsh/cli/internal/api"
 	"github.com/pachimsh/cli/internal/config"
+	"github.com/pachimsh/cli/internal/git"
 	"github.com/spf13/cobra"
 )
 
@@ -101,9 +102,20 @@ func runInit(cmd *cobra.Command, args []string) error {
 			}
 		}
 
+		deployBranch := resolveInitDeployBranch(reader, site)
+
+		label := ""
+		if len(selectedSites) > 1 {
+			fmt.Printf("Label for %s (optional, e.g. Production): ", site.Domain)
+			labelInput, _ := reader.ReadString('\n')
+			label = strings.TrimSpace(labelInput)
+		}
+
 		existingCfg.Sites[alias] = config.SiteConfig{
-			ID:     site.ID,
-			Domain: site.Domain,
+			ID:           site.ID,
+			Domain:       site.Domain,
+			DeployBranch: deployBranch,
+			Label:        label,
 		}
 	}
 
@@ -138,7 +150,20 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  Default site: %s\n", existingCfg.Default)
 
 	if len(existingCfg.Sites) > 1 {
-		fmt.Println("  Use --site <alias> or 'pachim use <alias>' to change default")
+		fmt.Println("  Branch mappings:")
+		for _, alias := range config.SortedSiteAliases(existingCfg) {
+			site := existingCfg.Sites[alias]
+			name := site.DisplayName(alias)
+			branch := site.DeployBranch
+			if branch == "" {
+				branch = "(not set)"
+			}
+			fmt.Printf("    • %s → %s [branch: %s]\n", name, site.Domain, branch)
+		}
+		fmt.Println("  pachim push auto-selects the site from your current git branch.")
+		fmt.Println("  Use --site <alias> or 'pachim use <alias>' to override the default.")
+	} else if site, ok := existingCfg.Sites[existingCfg.Default]; ok && site.DeployBranch != "" {
+		fmt.Printf("  Deploy branch: %s\n", site.DeployBranch)
 	}
 
 	addToGitignore()
@@ -148,6 +173,30 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println("  • Run: pachim push")
 
 	return nil
+}
+
+func promptDeployBranch(reader *bufio.Reader, domain string) string {
+	cwd, err := os.Getwd()
+	defaultBranch := ""
+	if err == nil {
+		if head, ok := git.CurrentHead(cwd); ok {
+			defaultBranch = head.Branch
+		}
+	}
+
+	if defaultBranch != "" {
+		fmt.Printf("Git branch for %s (Enter for '%s'): ", domain, defaultBranch)
+	} else {
+		fmt.Printf("Git branch for %s (optional, e.g. develop or main): ", domain)
+	}
+
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+	if input != "" {
+		return input
+	}
+
+	return defaultBranch
 }
 
 func addToGitignore() {

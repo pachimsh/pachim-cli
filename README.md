@@ -1,194 +1,330 @@
 # Pachim CLI
 
-A command-line tool for deploying projects to servers managed by [Pachim](https://pachim.sh).
+Deploy projects from your terminal to sites on [Pachim](https://pachim.sh).
+
+The CLI packages your local project, uploads it to Pachim, and monitors the deployment. It supports **multiple sites per project**, **automatic target selection by git branch**, and **git-merge uploads** (incremental deploys instead of full replacements).
 
 ## Installation
 
-### Quick Install (Recommended)
+### Quick install (recommended)
 
-**Linux / macOS:**
+**Linux / macOS**
 
 ```bash
 curl -fsSL https://mirrors.pachim.app/cli/install.sh | sh
 ```
 
-Install scripts try **mirrors.pachim.app** first, then fall back to **GitHub** if the mirror is unavailable.
-
-**Windows (PowerShell):**
+**Windows (PowerShell)**
 
 ```powershell
 irm https://mirrors.pachim.app/cli/install.ps1 | iex
 ```
 
-**Windows (MSI):**
+Install scripts try **mirrors.pachim.app** first, then fall back to **GitHub** if the mirror is unavailable.
 
-Download `pachim_windows_amd64.msi` from [GitHub Releases](https://github.com/pachimsh/pachim-cli/releases) and run the installer. It installs `pachim.exe` and adds `C:\Program Files\Pachim` to system `PATH`.
+**Windows (MSI)** — download `pachim_windows_amd64.msi` from [GitHub Releases](https://github.com/pachimsh/pachim-cli/releases). Installs to `C:\Program Files\Pachim` and adds it to `PATH`.
 
-### Package Managers
+### Package managers
 
-**Homebrew (macOS / Linux):**
+| Platform | Command                                                                                      |
+| -------- | -------------------------------------------------------------------------------------------- |
+| Homebrew | `brew install pachimsh/homebrew-tap/pachim`                                                  |
+| Scoop    | `scoop bucket add pachimsh https://github.com/pachimsh/scoop-bucket && scoop install pachim` |
+| WinGet   | `winget install Pachim.PachimCLI`                                                            |
 
-```bash
-brew install pachimsh/homebrew-tap/pachim
-```
-
-**Scoop (Windows):**
-
-```powershell
-scoop bucket add pachimsh https://github.com/pachimsh/scoop-bucket
-scoop install pachim
-```
-
-**WinGet (Windows):**
-
-```powershell
-winget install Pachim.PachimCLI
-```
-
-### Manual Download
-
-Download the latest binary from [GitHub Releases](https://github.com/pachimsh/pachim-cli/releases) for your platform.
-
-### Build from Source
-
-```bash
-go install github.com/pachimsh/cli@latest
-```
-
-Or clone and build:
+### Build from source
 
 ```bash
 git clone https://github.com/pachimsh/pachim-cli.git
-cd cli
+cd pachim-cli
 go build -o pachim .
 ```
 
-## Usage
+---
 
-### 1. Login
+## Quick start
 
 ```bash
+# 1. Authenticate
 pachim login
-```
 
-You'll be prompted for your email and password. The token is stored securely in `~/.pachim/profiles/default.json`.
-
-### 2. Initialize a project
-
-```bash
+# 2. Link this project to your Pachim site(s)
 pachim init
-```
 
-This links the current directory to one or more Pachim sites. A `.pachim.json` file is created in the project root.
+# 3. Sync branch mappings (first time, or after upgrading CLI)
+pachim link sync
 
-You can link multiple sites (e.g., staging and production) and switch between them using the `--site` flag.
-
-### 3. Deploy
-
-```bash
+# 4. Deploy
 pachim push
 ```
 
-This packages your project (using git-tracked files or respecting common ignore patterns), uploads it to Pachim, and monitors the deployment status.
+---
 
-To deploy to a specific site:
+## Typical workflow
+
+### Single site
 
 ```bash
-pachim push --site staging
+pachim init          # pick your site
+pachim link sync     # set deploy_branch (or pull from Pachim)
+pachim push          # package, upload, watch deployment
 ```
 
-### Other commands
+### Staging + production (one repo, multiple branches)
+
+Map each git branch to a site in `.pachim.json`. After that, **`pachim push` picks the target from your current branch** — no need to re-run `init` or switch configs manually.
 
 ```bash
-pachim sites         # List all your sites
-pachim whoami        # Show logged-in user
-pachim profiles      # List all profiles
-pachim self-update   # Update CLI to the latest release
-pachim logout        # Log out and remove stored credentials
+git checkout develop
+pachim push          # → staging (e.g. dapi.example.com)
+
+git checkout main
+pachim push          # → production (e.g. api.example.com)
 ```
 
-## Multiple Profiles
-
-You can use multiple Pachim accounts simultaneously:
+Preview before deploying:
 
 ```bash
-# Login with different profiles
+pachim status
+# or
+pachim push --dry-run
+```
+
+---
+
+## Commands
+
+### Authentication & accounts
+
+| Command           | Description                                     |
+| ----------------- | ----------------------------------------------- |
+| `pachim login`    | Sign in (token stored in `~/.pachim/profiles/`) |
+| `pachim logout`   | Remove stored credentials                       |
+| `pachim whoami`   | Show the logged-in user                         |
+| `pachim profiles` | List saved profiles                             |
+
+Use multiple accounts with `--profile` or `PACHIM_PROFILE`:
+
+```bash
 pachim --profile work login
-pachim --profile personal login
-
-# Deploy using a specific profile
 pachim --profile work push
-
-# Or set via environment variable
-export PACHIM_PROFILE=work
-pachim push
 ```
+
+### Project setup
+
+| Command              | Description                                                                                                             |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `pachim init`        | Link the current directory to one or more Pachim sites; creates `.pachim.json`                                          |
+| `pachim link sync`   | Sync sites with Pachim (remove deleted sites, pull `deploy_branch` from server, interactive setup for missing mappings) |
+| `pachim link show`   | Show configured sites, branch mappings, and which site matches the current git branch                                   |
+| `pachim use [alias]` | Set the default site alias in `.pachim.json`                                                                            |
+
+### Deploy
+
+| Command              | Description                                      |
+| -------------------- | ------------------------------------------------ |
+| `pachim push`        | Package, upload, and deploy to the resolved site |
+| `pachim status`      | Show the deploy plan without uploading           |
+| `pachim deployments` | List recent deployments for a site               |
+
+### Site management
+
+| Command            | Description                                        |
+| ------------------ | -------------------------------------------------- |
+| `pachim sites`     | List all sites on your Pachim account              |
+| `pachim git-merge` | View or toggle git-merge mode for the default site |
+
+### Maintenance
+
+| Command              | Description                          |
+| -------------------- | ------------------------------------ |
+| `pachim self-update` | Update the CLI to the latest release |
+
+### Global flags
+
+| Flag               | Description                                               |
+| ------------------ | --------------------------------------------------------- |
+| `--profile <name>` | Use a specific credentials profile                        |
+| `--verbose`        | Show sync details, branch matching, and extra deploy info |
+| `--quiet`          | Minimal output (errors and final results only)            |
+
+---
+
+## `pachim push`
+
+Packages files from the working directory (respecting `.gitignore` via `git ls-files`), uploads a zip, and streams deployment logs until finished.
+
+### Target selection
+
+Priority order:
+
+1. `--site <alias>` — explicit override
+2. **Git branch mapping** — if current branch matches exactly one site's `deploy_branch`
+3. Single site in config — used automatically
+4. Interactive site picker — when ambiguous
+
+### Flags
+
+| Flag              | Description                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| `--site <alias>`  | Deploy to a specific site                                                            |
+| `--branch <name>` | Branch metadata sent to Pachim (defaults to mapped / current branch)                 |
+| `--save-branch`   | Save the deploy branch as the site default on Pachim                                 |
+| `-y`, `--yes`     | Skip deploy confirmation (for CI); still respects production safety unless `--force` |
+| `--dry-run`       | Print the deploy plan and exit                                                       |
+| `--force`         | Allow deploy with production branch + uncommitted local changes                      |
+
+### Deploy plan
+
+When confirmation is needed, the CLI shows a single **deploy plan** instead of multiple separate prompts:
+
+- Target site and domain
+- Branch and commit
+- Git state (clean / uncommitted changes)
+- Git-merge vs full-replace mode
+- Active deployment on server (watch, queue, or cancel)
+
+On a **happy path** (branch match, clean tree, git-merge on, no active deploy), push runs with one line:
+
+```text
+→ Deploying api.example.com (main @ a1b2c3d)...
+```
+
+### Production safety
+
+Deploying a production branch (`main`, `master`, `production`, `prod`) with **uncommitted changes** triggers an extra confirmation. Use `--force` only when you intend to upload local changes to production.
+
+### CI example
+
+```bash
+pachim --profile production push \
+  --site production \
+  --branch "$GITHUB_REF_NAME" \
+  --yes
+```
+
+Ensure `.pachim.json` and branch mappings exist in the repo (or run `pachim link sync` in a setup step).
+
+---
+
+## Git merge
+
+When **git merge** is enabled on a site, uploads are merged with existing code on the server (similar to `git push`). When disabled, each upload **replaces** all code.
+
+- During push, you can enable git merge from the deploy plan
+- After the first successful deploy, the CLI may offer to enable it
+- Manage manually: `pachim git-merge`, `pachim git-merge --enable`, `pachim git-merge --disable`
+
+---
 
 ## Configuration
 
 ### Credentials
 
-Stored at `~/.pachim/profiles/<name>.json` (file permissions: 0600). Never commit this file.
+Stored at `~/.pachim/profiles/<name>.json` (mode `0600`). **Never commit this file.**
 
-### Project config
+### Project config — `.pachim.json`
 
-`.pachim.json` in the project root:
+Created by `pachim init`. Automatically added to `.gitignore` when inside a git repo.
 
 ```json
 {
-  "default": "example.com",
+  "default": "production",
   "sites": {
-    "example.com": {
-      "site_id": "uuid-here",
-      "domain": "example.com"
-    },
     "staging": {
-      "site_id": "uuid-staging",
-      "domain": "staging.example.com"
+      "site_id": "01abc...",
+      "domain": "dapi.example.com",
+      "deploy_branch": "develop",
+      "label": "Staging API"
+    },
+    "production": {
+      "site_id": "01xyz...",
+      "domain": "api.example.com",
+      "deploy_branch": "main",
+      "label": "Production API"
     }
   }
 }
 ```
 
+| Field           | Description                                                       |
+| --------------- | ----------------------------------------------------------------- |
+| `default`       | Fallback site alias (used when branch mapping does not match)     |
+| `site_id`       | Pachim site ID                                                    |
+| `domain`        | Site domain                                                       |
+| `deploy_branch` | Git branch mapped to this site; drives automatic target selection |
+| `label`         | Optional display name in CLI prompts                              |
+
+### Keeping config in sync
+
+On each `pachim push`:
+
+- Sites deleted from Pachim are **removed** from `.pachim.json`
+- Missing `deploy_branch` values are **pulled from Pachim** when available
+
+If mappings are still incomplete:
+
+```bash
+pachim link sync
+```
+
+### Upgrading from an older CLI
+
+If your `.pachim.json` has sites but no `deploy_branch`:
+
+```bash
+pachim link sync
+```
+
+The CLI pulls branches from Pachim first, then asks only for sites that still need a mapping.
+
+---
+
+## Environment variables
+
+| Variable         | Description                                              |
+| ---------------- | -------------------------------------------------------- |
+| `PACHIM_PROFILE` | Default profile name                                     |
+| `PACHIM_API_URL` | Override API base URL (default: `https://api.pachim.sh`) |
+
+---
+
 ## Development
 
 ### Custom API URL
 
-For local development, override the API URL:
-
 ```bash
-# Via environment variable
 export PACHIM_API_URL=http://localhost:8000
 pachim login
 
-# Via flag
+# or per command
 pachim --api-url http://localhost:8000 login
-
-# Via build-time injection
-go build -ldflags "-X main.apiBaseURL=http://localhost:8000" -o pachim .
 ```
 
 ### Build
 
 ```bash
-# Build for current OS
 go build -o pachim .
 
-# Cross-compile
+# cross-compile
 GOOS=linux GOARCH=amd64 go build -o pachim-linux .
-GOOS=darwin GOARCH=amd64 go build -o pachim-mac .
+GOOS=darwin GOARCH=arm64 go build -o pachim-mac .
 GOOS=windows GOARCH=amd64 go build -o pachim.exe .
 ```
 
 ### Release
 
-Releases are automated with GoReleaser and GitHub Actions. To create a new release:
+Tags trigger GoReleaser via GitHub Actions:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
-This will automatically build binaries for all platforms and publish to GitHub Releases, Homebrew, and Scoop.
+For mirror deployment to `mirrors.pachim.app`, see [docs/DEPLOY.md](docs/DEPLOY.md).
 
-For mirror deployment to `pachim.sh` (recommended for users in Iran), see [docs/DEPLOY.md](docs/DEPLOY.md).
+---
+
+## License
+
+See [LICENSE](LICENSE).

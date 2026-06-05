@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,7 +11,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/pachimsh/cli/internal/api"
 	"github.com/pachimsh/cli/internal/archive"
-	"github.com/pachimsh/cli/internal/config"
 	"github.com/pachimsh/cli/internal/git"
 	"github.com/pachimsh/cli/internal/ui"
 	"github.com/spf13/cobra"
@@ -21,12 +19,21 @@ import (
 var pushSiteFlag string
 var pushBranchFlag string
 var pushSaveBranchFlag bool
+var pushYesFlag bool
+var pushDryRunFlag bool
+var pushForceFlag bool
 
 var pushCmd = &cobra.Command{
 	Use:   "push",
 	Short: "Deploy the current project to your Pachim site",
 	Long: `Packages the project (respecting .gitignore), uploads it,
-and triggers a deployment on the selected site.`,
+and triggers a deployment on the selected site.
+
+When multiple sites are configured, pachim push selects the target from your
+current git branch using deploy_branch in .pachim.json.
+
+Run 'pachim link sync' first to configure branch mappings.
+Run 'pachim status' to preview the deploy plan without uploading.`,
 	RunE: runPush,
 }
 
@@ -34,135 +41,129 @@ func init() {
 	pushCmd.Flags().StringVar(&pushSiteFlag, "site", "", "Target site alias (from .pachim.json)")
 	pushCmd.Flags().StringVar(&pushBranchFlag, "branch", "", "Git branch to deploy (defaults to current checkout)")
 	pushCmd.Flags().BoolVar(&pushSaveBranchFlag, "save-branch", false, "Save deploy branch as site default on Pachim")
+	pushCmd.Flags().BoolVarP(&pushYesFlag, "yes", "y", false, "Skip deploy confirmation prompts")
+	pushCmd.Flags().BoolVar(&pushDryRunFlag, "dry-run", false, "Show deploy plan without uploading")
+	pushCmd.Flags().BoolVar(&pushForceFlag, "force", false, "Deploy even with production branch + uncommitted changes")
 }
 
 func runPush(cmd *cobra.Command, args []string) error {
-	profile := resolveProfile()
-
-	creds, err := config.LoadCredentials(profile)
+	ctx, err := loadProjectContext(true)
 	if err != nil {
-		color.Red("You are not logged in. Run: pachim login")
-		return nil
-	}
-
-	projCfg, err := config.LoadProjectConfig()
-	if err != nil {
-		color.Red("Project not initialized. Run: pachim init")
-		return nil
-	}
-
-	targetAlias := pushSiteFlag
-	if targetAlias == "" {
-		targetAlias = projCfg.Default
-	}
-
-	site, ok := projCfg.Sites[targetAlias]
-	if !ok {
-		color.Red("Site '%s' not found in .pachim.json", targetAlias)
-		fmt.Println("Available sites:")
-		for alias := range projCfg.Sites {
-			fmt.Printf("  • %s\n", alias)
+		if err == errPushAborted {
+			return nil
 		}
+		return err
+	}
+
+	if err := syncProjectConfigWithServer(ctx.projCfg, ctx.client); err != nil {
+		if err == errNoConfiguredSites {
+			color.Red("No sites configured. Run: pachim init")
+			return nil
+		}
+		ui.PrintAPIError("Failed to sync project config", err)
 		return nil
 	}
 
-	color.Cyan("Deploying to: %s", site.Domain)
-	fmt.Println()
+	if err := syncBranchesFromServerOnly(ctx.projCfg, ctx.client); err != nil {
+		if err == errLinkSyncRequired {
+			color.Red("Branch mappings are incomplete.")
+			fmt.Println("  Run: pachim link sync")
+			return nil
+		}
+		return err
+	}
 
-	baseURL := resolveBaseURL()
-	client := api.NewClient(baseURL, creds.Token)
+	target, err := resolvePushTarget(ctx.projCfg, ctx.client, ctx.cwd)
+	if err != nil {
+		if err == errPushAborted {
+			color.Cyan("Cancelled.")
+			return nil
+		}
+		color.Red("%s", err)
+		return nil
+	}
 
-	siteInfo, err := client.GetSiteInfo(site.ID)
+	siteInfo, err := ctx.client.GetSiteInfo(target.Site.ID)
 	if err != nil {
 		ui.PrintAPIError("Failed to fetch site info", err)
 		return nil
 	}
 
-	wasFirstDeploy := siteInfo.SetupType == ""
-
-	if decision := resolveActiveDeploymentBeforePush(siteInfo); decision == pushCancelled {
-		color.Cyan("Cancelled.")
-		return nil
-	} else if decision == pushWatchExisting {
-		fmt.Println()
-		return pollDeployment(client, site.ID, siteInfo.ActiveDeployment.ID, wasFirstDeploy)
-	}
-
-	if !confirmGitMergeBeforePush(client, site.ID, siteInfo) {
-		return nil
-	}
-
-	cwd, err := os.Getwd()
+	plan := buildDeployPlan(target, siteInfo, ctx.cwd)
+	decision, _, err := resolveDeployPlan(ctx.client, plan, pushYesFlag, pushForceFlag, pushDryRunFlag)
 	if err != nil {
-		return fmt.Errorf("failed to get working directory: %w", err)
+		return err
 	}
 
-	deployOpts := resolveDeployUploadOptions(cwd, site, siteInfo)
+	switch decision {
+	case planCancelled:
+		if !pushDryRunFlag {
+			color.Cyan("Cancelled.")
+		}
+		return nil
+	case planWatch:
+		fmt.Println()
+		return pollDeployment(ctx.client, target.Site.ID, siteInfo.ActiveDeployment.ID, plan.FirstDeploy)
+	case planDeploy:
+		// continue below
+	}
+
+	if pushDryRunFlag {
+		return nil
+	}
+
+	deployOpts := resolveDeployUploadOptions(ctx.cwd, target, siteInfo)
 
 	tmpDir := os.TempDir()
 	zipPath := filepath.Join(tmpDir, fmt.Sprintf("pachim-deploy-%d.zip", time.Now().UnixNano()))
 	defer os.Remove(zipPath)
 
 	if err := ui.RunWithProgress("Packaging project...", "Project packaged", func(setProgress func(int)) error {
-		return archive.CreateProjectZipWithProgress(cwd, zipPath, archive.ProgressFunc(setProgress))
+		return archive.CreateProjectZipWithProgress(ctx.cwd, zipPath, archive.ProgressFunc(setProgress))
 	}); err != nil {
 		color.Red("Failed to package project: %s", err)
 		return nil
 	}
 
 	info, _ := os.Stat(zipPath)
-	fmt.Printf("  Package size: %.2f MB\n", float64(info.Size())/(1024*1024))
-	fmt.Println()
+	if !quietFlag {
+		fmt.Printf("  Package size: %.2f MB\n", float64(info.Size())/(1024*1024))
+		fmt.Println()
+	}
 
 	var deployResp *api.DeployResponse
 	if err := ui.RunWithProgress("Uploading and starting deployment...", "Upload complete", func(setProgress func(int)) error {
 		var deployErr error
-		deployResp, deployErr = client.DeployWithProgress(site.ID, zipPath, deployOpts, setProgress)
+		deployResp, deployErr = ctx.client.DeployWithProgress(target.Site.ID, zipPath, deployOpts, setProgress)
 		return deployErr
 	}); err != nil {
 		ui.PrintAPIError("Deployment failed", err)
 		return nil
 	}
 
-	color.Green("✓ Deployment started (ID: %s)", deployResp.DeploymentID)
-	fmt.Println()
+	if !quietFlag {
+		color.Green("✓ Deployment started (ID: %s)", deployResp.DeploymentID)
+		fmt.Println()
+	}
 
-	return pollDeployment(client, site.ID, deployResp.DeploymentID, wasFirstDeploy)
+	return pollDeployment(ctx.client, target.Site.ID, deployResp.DeploymentID, plan.FirstDeploy)
 }
 
-type pushDecision int
-
-const (
-	pushContinue pushDecision = iota
-	pushWatchExisting
-	pushCancelled
-)
-
-func resolveDeployUploadOptions(cwd string, site config.SiteConfig, siteInfo *api.SiteInfo) *api.DeployUploadOptions {
+func resolveDeployUploadOptions(cwd string, target *pushTarget, siteInfo *api.SiteInfo) *api.DeployUploadOptions {
 	opts := &api.DeployUploadOptions{}
 
-	branch := strings.TrimSpace(pushBranchFlag)
-	if branch == "" {
-		branch = strings.TrimSpace(site.DeployBranch)
-	}
+	branch := resolveDeployBranch(target, siteInfo, cwd)
 
-	if head, ok := git.CurrentHead(cwd); ok {
-		if branch == "" {
-			branch = head.Branch
-		}
-		if head.Commit != "" {
-			opts.CommitHash = head.Commit
-		}
-	}
-
-	if branch == "" {
-		branch = strings.TrimSpace(siteInfo.DeployBranch)
+	if target.Head != nil && target.Head.Commit != "" {
+		opts.CommitHash = target.Head.Commit
+	} else if head, ok := git.CurrentHead(cwd); ok && head.Commit != "" {
+		opts.CommitHash = head.Commit
 	}
 
 	opts.Branch = branch
 	opts.SaveBranchAsDefault = pushSaveBranchFlag
 
-	if branch != "" || opts.CommitHash != "" {
+	if verboseFlag && (branch != "" || opts.CommitHash != "") {
 		label := branch
 		if label == "" {
 			label = "(detached)"
@@ -181,105 +182,14 @@ func resolveDeployUploadOptions(cwd string, site config.SiteConfig, siteInfo *ap
 	return opts
 }
 
-func resolveActiveDeploymentBeforePush(siteInfo *api.SiteInfo) pushDecision {
-	active := siteInfo.ActiveDeployment
-	if active == nil {
-		return pushContinue
-	}
-
-	fmt.Println()
-	color.Yellow("⚠ This site already has an active deployment.")
-	fmt.Printf("  Deployment ID: %s\n", active.ID)
-	fmt.Printf("  Status: %s\n", active.Status)
-	if active.InitiatedBy != "" {
-		fmt.Printf("  Initiated by: %s\n", active.InitiatedBy)
-	}
-	if active.StartedAt != "" {
-		fmt.Printf("  Started at: %s\n", active.StartedAt)
-	}
-	fmt.Println()
-	fmt.Println("  [W] Watch current deployment")
-	fmt.Println("  [Q] Queue new deployment anyway")
-	fmt.Println("  [C] Cancel")
-	fmt.Println()
-	fmt.Print("Choose an option [W/q/c]: ")
-
-	reader := bufio.NewReader(os.Stdin)
-	answer, _ := reader.ReadString('\n')
-	answer = strings.TrimSpace(strings.ToLower(answer))
-
-	switch answer {
-	case "", "w", "watch":
-		return pushWatchExisting
-	case "q", "queue":
-		fmt.Println()
-		color.Cyan("Queueing a new deployment...")
-		fmt.Println()
-		return pushContinue
-	default:
-		return pushCancelled
-	}
-}
-
-func confirmGitMergeBeforePush(client *api.Client, siteID string, siteInfo *api.SiteInfo) bool {
-	if siteInfo.GitMerge {
-		return true
-	}
-
-	// First deploy: site has no existing code yet, git merge is not relevant.
-	if siteInfo.SetupType == "" {
-		return true
-	}
-
-	fmt.Println()
-	color.Yellow("⚠ Git merge is disabled for this site.")
-	fmt.Println("  Your upload will completely replace the code on the server.")
-	fmt.Println("  Enabling git merge lets future uploads merge changes (like git push).")
-	fmt.Println()
-	fmt.Print("Enable git merge and continue? [Y/n]: ")
-
-	reader := bufio.NewReader(os.Stdin)
-	answer, _ := reader.ReadString('\n')
-	answer = strings.TrimSpace(strings.ToLower(answer))
-
-	if answer == "" || answer == "y" || answer == "yes" {
-		if !enableGitMerge(client, siteID) {
-			return false
-		}
-		fmt.Println()
-		return true
-	}
-
-	fmt.Print("Continue with full replace instead? [y/N]: ")
-	answer, _ = reader.ReadString('\n')
-	answer = strings.TrimSpace(strings.ToLower(answer))
-	if answer == "y" || answer == "yes" {
-		fmt.Println()
-		return true
-	}
-
-	color.Cyan("Cancelled.")
-	return false
-}
-
-func enableGitMerge(client *api.Client, siteID string) bool {
-	enabled, err := client.ToggleGitMerge(siteID)
-	if err != nil {
-		color.Red("Failed to enable git merge: %s", err)
-		return false
-	}
-	if enabled {
-		color.Green("✓ Git merge enabled.")
-	}
-	return true
-}
-
 func pollDeployment(client *api.Client, siteID, deploymentID string, wasFirstDeploy bool) error {
 	const pollInterval = 2 * time.Second
-	const maxPollDuration = 2 * time.Hour // deployments can take up to ~1 hour
+	const maxPollDuration = 2 * time.Hour
 
-	color.Yellow("⟳ Waiting for deployment to complete...")
-	fmt.Println()
+	if !quietFlag {
+		color.Yellow("⟳ Waiting for deployment to complete...")
+		fmt.Println()
+	}
 
 	streamer := newDeployOutputStreamer()
 	onStatusLine := false
@@ -294,7 +204,9 @@ func pollDeployment(client *api.Client, siteID, deploymentID string, wasFirstDep
 				fmt.Println()
 				onStatusLine = false
 			}
-			color.Yellow("  Checking status... (retrying)")
+			if !quietFlag {
+				color.Yellow("  Checking status... (retrying)")
+			}
 			continue
 		}
 
@@ -313,7 +225,7 @@ func pollDeployment(client *api.Client, siteID, deploymentID string, wasFirstDep
 			streamer.Write(status.Output, true)
 			fmt.Println()
 			color.Green("✓ Deployment completed successfully!")
-			if status.FinishedAt != "" {
+			if status.FinishedAt != "" && !quietFlag {
 				fmt.Printf("  Finished at: %s\n", status.FinishedAt)
 			}
 			offerGitMergeAfterFirstDeploy(client, siteID, wasFirstDeploy)
@@ -329,11 +241,15 @@ func pollDeployment(client *api.Client, siteID, deploymentID string, wasFirstDep
 			color.Red("✗ Deployment failed.")
 			return nil
 		case "queued":
-			fmt.Printf("\r  Status: queued...      ")
-			onStatusLine = true
+			if !quietFlag {
+				fmt.Printf("\r  Status: queued...      ")
+				onStatusLine = true
+			}
 		default:
-			fmt.Printf("\r  Status: %s   ", status.Status)
-			onStatusLine = true
+			if !quietFlag {
+				fmt.Printf("\r  Status: %s   ", status.Status)
+				onStatusLine = true
+			}
 		}
 	}
 
@@ -393,7 +309,7 @@ func (s *deployOutputStreamer) Write(output string, final bool) {
 }
 
 func offerGitMergeAfterFirstDeploy(client *api.Client, siteID string, wasFirstDeploy bool) {
-	if !wasFirstDeploy || !isGitRepo() {
+	if !wasFirstDeploy || !isGitRepo() || quietFlag {
 		return
 	}
 
@@ -406,21 +322,16 @@ func offerGitMergeAfterFirstDeploy(client *api.Client, siteID string, wasFirstDe
 	color.Cyan("First deploy completed successfully.")
 	fmt.Println("  Enable git merge so future uploads merge with the server (like git push).")
 	fmt.Println()
-	fmt.Print("Enable git merge for future pushes? [Y/n]: ")
 
-	reader := bufio.NewReader(os.Stdin)
-	answer, _ := reader.ReadString('\n')
-	answer = strings.TrimSpace(strings.ToLower(answer))
-
-	if answer != "" && answer != "y" && answer != "yes" {
+	if !readYesNo("Enable git merge for future pushes? [Y/n]: ", true) {
 		return
 	}
 
-	enableGitMerge(client, siteID)
+	enableGitMergeOnServer(client, siteID)
 }
 
 func offerGitPush() {
-	if !isGitRepo() {
+	if !isGitRepo() || quietFlag {
 		return
 	}
 
@@ -429,12 +340,7 @@ func offerGitPush() {
 	}
 
 	fmt.Println()
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("You have unpushed commits. Push to remote? [y/N]: ")
-	answer, _ := reader.ReadString('\n')
-	answer = strings.TrimSpace(strings.ToLower(answer))
-
-	if answer != "y" && answer != "yes" {
+	if !readYesNo("You have unpushed commits. Push to remote? [y/N]: ", false) {
 		return
 	}
 
