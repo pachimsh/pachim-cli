@@ -21,6 +21,14 @@ func PrintAPIError(title string, err error) {
 			fmt.Printf("  • %s\n", detail)
 		}
 
+		if len(apiErr.Hints) > 0 {
+			fmt.Println()
+			color.Yellow("What you can do:")
+			for _, hint := range apiErr.Hints {
+				fmt.Printf("  → %s\n", hint)
+			}
+		}
+
 		return
 	}
 

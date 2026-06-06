@@ -43,6 +43,44 @@ func TestParseHTTPErrorFailMessage(t *testing.T) {
 	}
 }
 
+func TestParseHTTPErrorForbiddenWithMessageCode(t *testing.T) {
+	body := []byte(`{
+		"message": "This site belongs to another Pachim account.",
+		"message_code": "site_owner_mismatch",
+		"status": 403
+	}`)
+
+	err := parseHTTPError(403, body)
+	apiErr, ok := AsAPIError(err)
+	if !ok {
+		t.Fatalf("expected APIError, got %T", err)
+	}
+
+	if apiErr.MessageCode != "site_owner_mismatch" {
+		t.Fatalf("unexpected message code: %q", apiErr.MessageCode)
+	}
+
+	if len(apiErr.Hints) == 0 {
+		t.Fatalf("expected hints for site_owner_mismatch")
+	}
+}
+
+func TestParseHTTPErrorLegacyUnauthorized(t *testing.T) {
+	err := parseHTTPError(403, []byte(`{"message":"unauthorization","status":403}`))
+	apiErr, ok := AsAPIError(err)
+	if !ok {
+		t.Fatalf("expected APIError, got %T", err)
+	}
+
+	if apiErr.MessageCode != "access_denied" {
+		t.Fatalf("unexpected message code: %q", apiErr.MessageCode)
+	}
+
+	if len(apiErr.Hints) == 0 {
+		t.Fatalf("expected hints for access_denied")
+	}
+}
+
 func TestParseHTTPErrorUnauthorized(t *testing.T) {
 	err := parseHTTPError(401, []byte(`{"message":"Unauthenticated","status":401}`))
 	apiErr, ok := AsAPIError(err)
