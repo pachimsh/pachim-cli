@@ -8,9 +8,12 @@ import (
 )
 
 type Credentials struct {
-	Token  string `json:"token"`
-	Email  string `json:"email"`
-	Name   string `json:"name"`
+	Token         string `json:"token"`
+	Email         string `json:"email"`
+	Name          string `json:"name"`
+	WorkspaceID   string `json:"workspace_id,omitempty"`
+	WorkspaceName string `json:"workspace_name,omitempty"`
+	WorkspaceSlug string `json:"workspace_slug,omitempty"`
 }
 
 type SiteConfig struct {
@@ -29,8 +32,9 @@ func (s SiteConfig) DisplayName(alias string) string {
 }
 
 type ProjectConfig struct {
-	Default string                `json:"default"`
-	Sites   map[string]SiteConfig `json:"sites"`
+	WorkspaceID string                `json:"workspace_id,omitempty"`
+	Default     string                `json:"default"`
+	Sites       map[string]SiteConfig `json:"sites"`
 }
 
 type GlobalConfig struct {

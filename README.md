@@ -100,8 +100,34 @@ pachim push --dry-run
 | ----------------- | ----------------------------------------------- |
 | `pachim login`    | Sign in (token stored in `~/.pachim/profiles/`) |
 | `pachim logout`   | Remove stored credentials                       |
-| `pachim whoami`   | Show the logged-in user                         |
-| `pachim profiles` | List saved profiles                             |
+| `pachim whoami`   | Show the logged-in user and active workspace      |
+| `pachim profiles` | List saved profiles                               |
+
+### Workspaces
+
+Team accounts scope sites and servers by **workspace**. The CLI sends `X-Workspace-Id` on every authenticated request so `pachim sites`, `init`, and `push` see the same resources as the dashboard.
+
+| Command                    | Description                                              |
+| -------------------------- | -------------------------------------------------------- |
+| `pachim workspace list`    | List workspaces you can access                           |
+| `pachim workspace use <id\|slug>` | Pin the active workspace for this profile         |
+| `pachim workspace use personal`   | Reset to your personal workspace (default)        |
+| `pachim workspace current` | Show selected and API-resolved workspace context         |
+
+```bash
+pachim workspace list
+pachim workspace use my-team-slug
+pachim sites          # sites from that workspace
+pachim init           # link sites from that workspace
+```
+
+Priority for workspace selection:
+
+1. `--workspace <id|slug>` global flag
+2. `PACHIM_WORKSPACE_ID` or `PACHIM_WORKSPACE` environment variable
+3. `workspace_id` in `.pachim.json` (saved by `pachim init`; accepts id or slug)
+4. Profile preference from `pachim workspace use`
+5. Personal workspace (API default when nothing is set)
 
 Use multiple accounts with `--profile` or `PACHIM_PROFILE`:
 
@@ -145,6 +171,7 @@ pachim --profile work push
 | Flag               | Description                                               |
 | ------------------ | --------------------------------------------------------- |
 | `--profile <name>` | Use a specific credentials profile                        |
+| `--workspace <id\|slug>` | Override active workspace for this command                |
 | `--verbose`        | Show sync details, branch matching, and extra deploy info |
 | `--quiet`          | Minimal output (errors and final results only)            |
 
@@ -197,7 +224,9 @@ Deploying a production branch (`main`, `master`, `production`, `prod`) with **un
 ### CI example
 
 ```bash
-pachim --profile production push \
+pachim --profile production \
+  --workspace team-alpha \
+  push \
   --site production \
   --branch "$GITHUB_REF_NAME" \
   --yes
@@ -229,6 +258,7 @@ Created by `pachim init`. Automatically added to `.gitignore` when inside a git 
 
 ```json
 {
+  "workspace_id": "01abc...",
   "default": "production",
   "sites": {
     "staging": {
@@ -249,6 +279,7 @@ Created by `pachim init`. Automatically added to `.gitignore` when inside a git 
 
 | Field           | Description                                                       |
 | --------------- | ----------------------------------------------------------------- |
+| `workspace_id`  | Optional workspace scope for this project (id or slug; set by `pachim init`) |
 | `default`       | Fallback site alias (used when branch mapping does not match)     |
 | `site_id`       | Pachim site ID                                                    |
 | `domain`        | Site domain                                                       |
@@ -282,10 +313,12 @@ The CLI pulls branches from Pachim first, then asks only for sites that still ne
 
 ## Environment variables
 
-| Variable         | Description                                              |
-| ---------------- | -------------------------------------------------------- |
-| `PACHIM_PROFILE` | Default profile name                                     |
-| `PACHIM_API_URL` | Override API base URL (default: `https://api.pachim.sh`) |
+| Variable              | Description                                              |
+| --------------------- | -------------------------------------------------------- |
+| `PACHIM_PROFILE`      | Default profile name                                     |
+| `PACHIM_WORKSPACE_ID` | Active workspace id or slug for CLI requests               |
+| `PACHIM_WORKSPACE`    | Alias for workspace slug (used when `PACHIM_WORKSPACE_ID` is unset) |
+| `PACHIM_API_URL`      | Override API base URL (default: `https://api.pachim.sh`) |
 
 ---
 

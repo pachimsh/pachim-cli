@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/pachimsh/cli/internal/api"
 	"github.com/pachimsh/cli/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -25,8 +24,11 @@ func runSites(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	baseURL := resolveBaseURL()
-	client := api.NewClient(baseURL, creds.Token)
+	client, err := newAPIClient(creds)
+	if err != nil {
+		color.Red("%s", err)
+		return nil
+	}
 
 	sites, err := client.ListSites()
 	if err != nil {
@@ -40,7 +42,7 @@ func runSites(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
-	color.Cyan("Your Sites:")
+	color.Cyan("Your Sites (%s):", activeWorkspaceLabel(creds))
 	fmt.Println(strings.Repeat("─", 70))
 	fmt.Printf("  %-28s %-10s %-12s %-15s\n", "DOMAIN", "TYPE", "STATUS", "SERVER")
 	fmt.Println(strings.Repeat("─", 70))

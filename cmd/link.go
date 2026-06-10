@@ -173,7 +173,13 @@ func loadProjectContext(requireLogin bool) (*projectContext, error) {
 	}
 
 	if creds != nil {
-		ctx.client = api.NewClient(resolveBaseURL(), creds.Token)
+		client, err := newAPIClient(creds)
+		if err != nil {
+			color.Red("%s", err)
+			return nil, errPushAborted
+		}
+
+		ctx.client = client
 	}
 
 	return ctx, nil

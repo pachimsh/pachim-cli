@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/fatih/color"
-	"github.com/pachimsh/cli/internal/api"
 	"github.com/pachimsh/cli/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -47,8 +46,11 @@ func runGitMerge(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	baseURL := resolveBaseURL()
-	client := api.NewClient(baseURL, creds.Token)
+	client, err := newAPIClient(creds)
+	if err != nil {
+		color.Red("%s", err)
+		return nil
+	}
 
 	if !gitMergeEnableFlag && !gitMergeDisableFlag {
 		info, err := client.GetSiteInfo(site.ID)

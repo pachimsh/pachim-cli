@@ -8,15 +8,19 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
 var DefaultBaseURL = "https://api.pachim.sh"
 
+const WorkspaceContextHeader = "X-Workspace-Id"
+
 type Client struct {
-	BaseURL    string
-	Token      string
-	HTTPClient *http.Client
+	BaseURL     string
+	Token       string
+	WorkspaceID string
+	HTTPClient  *http.Client
 }
 
 type APIResponse struct {
@@ -101,6 +105,15 @@ type DeploymentsListResponse struct {
 	Deployments []DeploymentListItem `json:"deployments"`
 }
 
+type Workspace struct {
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Slug            string `json:"slug"`
+	Type            string `json:"type"`
+	IsPersonal      bool   `json:"is_personal"`
+	CurrentUserRole string `json:"current_user_role"`
+}
+
 func NewClient(baseURL, token string) *Client {
 	if baseURL == "" {
 		baseURL = DefaultBaseURL
@@ -112,6 +125,23 @@ func NewClient(baseURL, token string) *Client {
 		HTTPClient: &http.Client{
 			Timeout: 20000 * time.Second,
 		},
+	}
+}
+
+func (c *Client) WithWorkspace(workspaceID string) *Client {
+	clone := *c
+	clone.WorkspaceID = strings.TrimSpace(workspaceID)
+
+	return &clone
+}
+
+func (c *Client) applyAuthHeaders(req *http.Request) {
+	req.Header.Set("Accept", "application/json")
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	if strings.TrimSpace(c.WorkspaceID) != "" {
+		req.Header.Set(WorkspaceContextHeader, strings.TrimSpace(c.WorkspaceID))
 	}
 }
 
@@ -137,6 +167,38 @@ func (c *Client) Login(email, password string) (*LoginResponse, error) {
 func (c *Client) Logout() error {
 	_, err := c.postJSON("/cli/auth/logout", nil)
 	return err
+}
+
+func (c *Client) ListWorkspaces() ([]Workspace, error) {
+	resp, err := c.get("/cli/workspaces")
+	if err != nil {
+		return nil, err
+	}
+
+	var workspaces []Workspace
+	if err := json.Unmarshal(resp.Data, &workspaces); err != nil {
+		return nil, fmt.Errorf("failed to parse workspaces: %w", err)
+	}
+
+	return workspaces, nil
+}
+
+func (c *Client) GetCurrentWorkspace() (*Workspace, error) {
+	resp, err := c.get("/cli/workspaces/current")
+	if err != nil {
+		return nil, err
+	}
+
+	if len(resp.Data) == 0 || string(resp.Data) == "null" {
+		return nil, nil
+	}
+
+	var workspace Workspace
+	if err := json.Unmarshal(resp.Data, &workspace); err != nil {
+		return nil, fmt.Errorf("failed to parse current workspace: %w", err)
+	}
+
+	return &workspace, nil
 }
 
 func (c *Client) ListSites() ([]Site, error) {
@@ -263,8 +325,7 @@ func (c *Client) DeployWithProgress(siteID, zipPath string, opts *DeployUploadOp
 	}
 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("Authorization", "Bearer "+c.Token)
-	req.Header.Set("Accept", "application/json")
+	c.applyAuthHeaders(req)
 
 	httpResp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -338,10 +399,7 @@ func (c *Client) get(path string) (*APIResponse, error) {
 		return nil, err
 	}
 
-	req.Header.Set("Accept", "application/json")
-	if c.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.Token)
-	}
+	c.applyAuthHeaders(req)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -388,10 +446,7 @@ func (c *Client) postJSON(path string, payload interface{}) (*APIResponse, error
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	if c.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.Token)
-	}
+	c.applyAuthHeaders(req)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {

@@ -10,12 +10,14 @@ func init() {
 
 func registerCommands() {
 	initOutputFlags()
+	initClientFlags()
 
 	rootCmd.AddCommand(
 		loginCmd,
 		logoutCmd,
 		whoamiCmd,
 		profilesCmd,
+		workspaceCmd,
 		initCmd,
 		useCmd,
 		linkCmd,

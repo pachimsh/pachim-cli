@@ -26,8 +26,9 @@ func runWhoami(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	color.Cyan("Logged in as:")
 	fmt.Printf("  Name:    %s\n", creds.Name)
-	fmt.Printf("  Email:   %s\n", creds.Email)
-	fmt.Printf("  Profile: %s\n", profile)
+	fmt.Printf("  Email:     %s\n", creds.Email)
+	fmt.Printf("  Profile:   %s\n", profile)
+	fmt.Printf("  Workspace: %s\n", activeWorkspaceLabel(creds))
 	fmt.Println()
 
 	return nil

@@ -150,9 +150,9 @@ var cliErrorHints = map[string][]string{
 		"Run: pachim login  (use the Pachim account that owns this site)",
 	},
 	"site_owner_mismatch": {
-		"Run: pachim whoami  (see which account is active)",
-		"Run: pachim login   (sign in with the site owner account)",
-		"If your team shares one machine, each developer should use their own profile: pachim login --profile <name>",
+		"Run: pachim workspace list  (see available workspaces)",
+		"Run: pachim workspace use <id|slug>  (switch active workspace)",
+		"Run: pachim whoami  (verify account and active workspace)",
 	},
 	"membership_inactive": {
 		"Renew or activate your Pachim membership in the dashboard",

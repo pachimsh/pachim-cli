@@ -32,8 +32,17 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	baseURL := resolveBaseURL()
-	client := api.NewClient(baseURL, creds.Token)
+	client, err := newAPIClient(creds)
+	if err != nil {
+		color.Red("%s", err)
+		return nil
+	}
+
+	if wsLabel := activeWorkspaceLabel(creds); wsLabel != "personal (default)" {
+		logVerbose("Workspace context: %s", wsLabel)
+	} else if selector := resolveWorkspaceSelector(creds); selector != "" {
+		logVerbose("Workspace context: %s", selector)
+	}
 
 	color.Yellow("Fetching your sites...")
 
@@ -140,6 +149,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 				break
 			}
 		}
+	}
+
+	if client.WorkspaceID != "" {
+		existingCfg.WorkspaceID = client.WorkspaceID
 	}
 
 	if err := config.SaveProjectConfig(existingCfg); err != nil {
