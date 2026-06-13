@@ -55,7 +55,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := syncProjectConfigWithServer(ctx.projCfg, ctx.client); err != nil {
+	if err := syncProjectConfigWithServer(ctx.projCfg, ctx.creds); err != nil {
 		if err == errNoConfiguredSites {
 			color.Red("No sites configured. Run: pachim init")
 			return nil
@@ -64,7 +64,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if err := syncBranchesFromServerOnly(ctx.projCfg, ctx.client); err != nil {
+	if err := syncBranchesFromServerOnly(ctx.projCfg, ctx.creds); err != nil {
 		if err == errLinkSyncRequired {
 			color.Red("Branch mappings are incomplete.")
 			fmt.Println("  Run: pachim link sync")
@@ -73,7 +73,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	target, err := resolvePushTarget(ctx.projCfg, ctx.client, ctx.cwd)
+	target, err := resolvePushTarget(ctx.projCfg, ctx.creds, ctx.cwd)
 	if err != nil {
 		if err == errPushAborted {
 			color.Cyan("Cancelled.")
@@ -83,14 +83,20 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	siteInfo, err := ctx.client.GetSiteInfo(target.Site.ID)
+	siteClient, err := newAPIClientForSite(ctx.creds, target.Site)
+	if err != nil {
+		color.Red("%s", err)
+		return nil
+	}
+
+	siteInfo, err := siteClient.GetSiteInfo(target.Site.ID)
 	if err != nil {
 		ui.PrintAPIError("Failed to fetch site info", err)
 		return nil
 	}
 
 	plan := buildDeployPlan(target, siteInfo, ctx.cwd)
-	decision, _, err := resolveDeployPlan(ctx.client, plan, pushYesFlag, pushForceFlag, pushDryRunFlag)
+	decision, _, err := resolveDeployPlan(siteClient, plan, pushYesFlag, pushForceFlag, pushDryRunFlag)
 	if err != nil {
 		return err
 	}
@@ -103,7 +109,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return nil
 	case planWatch:
 		fmt.Println()
-		return pollDeployment(ctx.client, target.Site.ID, siteInfo.ActiveDeployment.ID, plan.FirstDeploy)
+		return pollDeployment(siteClient, target.Site.ID, siteInfo.ActiveDeployment.ID, plan.FirstDeploy)
 	case planDeploy:
 		// continue below
 	}
@@ -134,7 +140,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 	var deployResp *api.DeployResponse
 	if err := ui.RunWithProgress("Uploading and starting deployment...", "Upload complete", func(setProgress func(int)) error {
 		var deployErr error
-		deployResp, deployErr = ctx.client.DeployWithProgress(target.Site.ID, zipPath, deployOpts, setProgress)
+		deployResp, deployErr = siteClient.DeployWithProgress(target.Site.ID, zipPath, deployOpts, setProgress)
 		return deployErr
 	}); err != nil {
 		ui.PrintAPIError("Deployment failed", err)
@@ -146,7 +152,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 	}
 
-	return pollDeployment(ctx.client, target.Site.ID, deployResp.DeploymentID, plan.FirstDeploy)
+	return pollDeployment(siteClient, target.Site.ID, deployResp.DeploymentID, plan.FirstDeploy)
 }
 
 func resolveDeployUploadOptions(cwd string, target *pushTarget, siteInfo *api.SiteInfo) *api.DeployUploadOptions {

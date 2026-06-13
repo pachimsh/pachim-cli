@@ -36,7 +36,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	pushSiteFlag = statusSiteFlag
 	defer func() { pushSiteFlag = savedSiteFlag }()
 
-	target, err := resolvePushTarget(ctx.projCfg, ctx.client, ctx.cwd)
+	target, err := resolvePushTarget(ctx.projCfg, ctx.creds, ctx.cwd)
 	if err != nil {
 		if err == errPushAborted {
 			return nil
@@ -45,7 +45,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	siteInfo, err := ctx.client.GetSiteInfo(target.Site.ID)
+	siteClient, err := newAPIClientForSite(ctx.creds, target.Site)
+	if err != nil {
+		color.Red("%s", err)
+		return nil
+	}
+
+	siteInfo, err := siteClient.GetSiteInfo(target.Site.ID)
 	if err != nil {
 		ui.PrintAPIError("Failed to fetch site info", err)
 		return nil

@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/pachimsh/cli/internal/api"
 	"github.com/pachimsh/cli/internal/config"
 	"github.com/pachimsh/cli/internal/git"
 	"github.com/spf13/cobra"
@@ -32,43 +31,23 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	client, err := newAPIClient(creds)
-	if err != nil {
-		color.Red("%s", err)
-		return nil
-	}
+	client := newCatalogAPIClient(creds)
 
-	if wsLabel := activeWorkspaceLabel(creds); wsLabel != "personal (default)" {
-		logVerbose("Workspace context: %s", wsLabel)
-	} else if selector := resolveWorkspaceSelector(creds); selector != "" {
-		logVerbose("Workspace context: %s", selector)
-	}
+	color.Yellow("Fetching your sites across all workspaces...")
 
-	color.Yellow("Fetching your sites...")
-
-	sites, err := client.ListSites()
+	catalog, err := client.ListCatalog()
 	if err != nil {
 		color.Red("Failed to fetch sites: %s", err)
 		return nil
 	}
 
-	if len(sites) == 0 {
+	entries := flattenCatalog(catalog)
+	if len(entries) == 0 {
 		color.Yellow("No sites found. Create a site on Pachim first.")
 		return nil
 	}
 
-	fmt.Println()
-	fmt.Println("Your sites:")
-	fmt.Println(strings.Repeat("-", 60))
-	for i, site := range sites {
-		status := ""
-		if site.SetupType == "" {
-			status = " (not setup - will auto-setup on first push)"
-		}
-		fmt.Printf("  %d) %s [%s] (%s)%s\n", i+1, site.Domain, site.AppType, site.Server.Name, status)
-	}
-	fmt.Println(strings.Repeat("-", 60))
-	fmt.Println()
+	printCatalogPicker("Select a site to link this project:", catalog, entries)
 
 	reader := bufio.NewReader(os.Stdin)
 
@@ -83,26 +62,32 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Print("Select site number (or comma-separated for multiple): ")
+	fmt.Print("Enter number (comma-separated for multiple): ")
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(input)
 
 	selections := strings.Split(input, ",")
-	var selectedSites []api.Site
+	var selectedEntries []catalogEntry
 
 	for _, sel := range selections {
 		sel = strings.TrimSpace(sel)
 		idx, err := strconv.Atoi(sel)
-		if err != nil || idx < 1 || idx > len(sites) {
+		if err != nil || idx < 1 || idx > len(entries) {
 			color.Red("Invalid selection: %s", sel)
 			return nil
 		}
-		selectedSites = append(selectedSites, sites[idx-1])
+		entry, ok := findCatalogEntry(entries, idx)
+		if !ok {
+			color.Red("Invalid selection: %s", sel)
+			return nil
+		}
+		selectedEntries = append(selectedEntries, entry)
 	}
 
-	for _, site := range selectedSites {
+	for _, entry := range selectedEntries {
+		site := entry.Site
 		alias := site.Domain
-		if len(selectedSites) > 1 {
+		if len(selectedEntries) > 1 {
 			fmt.Printf("Alias for %s (press Enter for '%s'): ", site.Domain, site.Domain)
 			customAlias, _ := reader.ReadString('\n')
 			customAlias = strings.TrimSpace(customAlias)
@@ -114,30 +99,32 @@ func runInit(cmd *cobra.Command, args []string) error {
 		deployBranch := resolveInitDeployBranch(reader, site)
 
 		label := ""
-		if len(selectedSites) > 1 {
+		if len(selectedEntries) > 1 {
 			fmt.Printf("Label for %s (optional, e.g. Production): ", site.Domain)
 			labelInput, _ := reader.ReadString('\n')
 			label = strings.TrimSpace(labelInput)
 		}
 
 		existingCfg.Sites[alias] = config.SiteConfig{
-			ID:           site.ID,
-			Domain:       site.Domain,
-			DeployBranch: deployBranch,
-			Label:        label,
+			ID:            site.ID,
+			Domain:        site.Domain,
+			DeployBranch:  deployBranch,
+			Label:         label,
+			WorkspaceID:   workspaceIDForEntry(entry),
+			WorkspaceName: workspaceNameForEntry(entry),
 		}
 	}
 
-	if len(selectedSites) == 1 {
-		alias := selectedSites[0].Domain
+	if len(selectedEntries) == 1 {
+		alias := selectedEntries[0].Site.Domain
 		for k, v := range existingCfg.Sites {
-			if v.ID == selectedSites[0].ID {
+			if v.ID == selectedEntries[0].Site.ID {
 				alias = k
 				break
 			}
 		}
 		existingCfg.Default = alias
-	} else if len(selectedSites) > 1 && existingCfg.Default == "" {
+	} else if len(selectedEntries) > 1 && existingCfg.Default == "" {
 		fmt.Print("Select default site for 'pachim push' (enter alias): ")
 		defaultAlias, _ := reader.ReadString('\n')
 		defaultAlias = strings.TrimSpace(defaultAlias)
@@ -151,9 +138,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if client.WorkspaceID != "" {
-		existingCfg.WorkspaceID = client.WorkspaceID
-	}
+	setProjectWorkspaceFromEntries(existingCfg, selectedEntries)
 
 	if err := config.SaveProjectConfig(existingCfg); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)

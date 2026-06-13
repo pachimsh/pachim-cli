@@ -12,7 +12,7 @@ import (
 	"github.com/pachimsh/cli/internal/git"
 )
 
-func runLinkBranchSetup(projCfg *config.ProjectConfig, client *api.Client, cwd string) error {
+func runLinkBranchSetup(projCfg *config.ProjectConfig, creds *config.Credentials, cwd string) error {
 	missing := config.SitesMissingDeployBranch(projCfg)
 	if len(missing) == 0 {
 		return nil
@@ -21,7 +21,7 @@ func runLinkBranchSetup(projCfg *config.ProjectConfig, client *api.Client, cwd s
 	fmt.Println()
 	color.Cyan("Checking branch mappings from Pachim...")
 
-	synced, stillMissing := syncDeployBranchesFromServer(projCfg, client, missing)
+	synced, stillMissing := syncDeployBranchesFromServer(projCfg, creds, missing)
 	if synced {
 		if err := config.SaveProjectConfig(projCfg); err != nil {
 			return fmt.Errorf("failed to save .pachim.json: %w", err)
@@ -102,9 +102,16 @@ func runLinkBranchSetup(projCfg *config.ProjectConfig, client *api.Client, cwd s
 	return nil
 }
 
-func syncDeployBranchesFromServer(projCfg *config.ProjectConfig, client *api.Client, aliases []string) (synced bool, stillMissing []string) {
+func syncDeployBranchesFromServer(projCfg *config.ProjectConfig, creds *config.Credentials, aliases []string) (synced bool, stillMissing []string) {
 	for _, alias := range aliases {
 		site := projCfg.Sites[alias]
+
+		client, err := newAPIClientForSite(creds, site)
+		if err != nil {
+			color.Yellow("  Could not resolve workspace for %s: %s", site.Domain, err)
+			stillMissing = append(stillMissing, alias)
+			continue
+		}
 
 		info, err := client.GetSiteInfo(site.ID)
 		if err != nil {
@@ -152,16 +159,18 @@ func promptDeployBranchForSite(reader *bufio.Reader, domain, defaultBranch strin
 	return defaultBranch
 }
 
-func offerSaveDeployBranchMapping(projCfg *config.ProjectConfig, client *api.Client, alias, branch string) {
+func offerSaveDeployBranchMapping(projCfg *config.ProjectConfig, creds *config.Credentials, alias, branch string) {
 	branch = strings.TrimSpace(branch)
 	site, ok := projCfg.Sites[alias]
 	if !ok || strings.TrimSpace(site.DeployBranch) != "" {
 		return
 	}
 
-	if branch == "" && client != nil {
-		if info, err := client.GetSiteInfo(site.ID); err == nil {
-			branch = strings.TrimSpace(info.DeployBranch)
+	if branch == "" && creds != nil {
+		if client, err := newAPIClientForSite(creds, site); err == nil {
+			if info, err := client.GetSiteInfo(site.ID); err == nil {
+				branch = strings.TrimSpace(info.DeployBranch)
+			}
 		}
 	}
 
@@ -204,14 +213,14 @@ func resolveInitDeployBranch(reader *bufio.Reader, site api.Site) string {
 }
 
 // syncBranchesFromServerOnly pulls deploy_branch from Pachim without interactive prompts.
-func syncBranchesFromServerOnly(projCfg *config.ProjectConfig, client *api.Client) error {
+func syncBranchesFromServerOnly(projCfg *config.ProjectConfig, creds *config.Credentials) error {
 	missing := config.SitesMissingDeployBranch(projCfg)
 	if len(missing) == 0 {
 		return nil
 	}
 
 	logVerbose("Checking branch mappings from Pachim...")
-	synced, stillMissing := syncDeployBranchesFromServer(projCfg, client, missing)
+	synced, stillMissing := syncDeployBranchesFromServer(projCfg, creds, missing)
 	if synced {
 		if err := config.SaveProjectConfig(projCfg); err != nil {
 			return fmt.Errorf("failed to save .pachim.json: %w", err)

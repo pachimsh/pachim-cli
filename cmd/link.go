@@ -42,7 +42,7 @@ func runLinkSync(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := syncProjectConfigWithServer(ctx.projCfg, ctx.client); err != nil {
+	if err := syncProjectConfigWithServer(ctx.projCfg, ctx.creds); err != nil {
 		if err == errNoConfiguredSites {
 			color.Red("No sites configured. Run: pachim init")
 			return nil
@@ -50,7 +50,7 @@ func runLinkSync(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if err := runLinkBranchSetup(ctx.projCfg, ctx.client, ctx.cwd); err != nil {
+	if err := runLinkBranchSetup(ctx.projCfg, ctx.creds, ctx.cwd); err != nil {
 		if err == errPushAborted {
 			color.Cyan("Cancelled.")
 			return nil

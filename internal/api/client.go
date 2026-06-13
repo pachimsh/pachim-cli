@@ -46,11 +46,25 @@ type Site struct {
 	RepoStatus   string `json:"repo_status"`
 	DeployBranch string `json:"deploy_branch"`
 	GitMerge     bool   `json:"git_merge"`
-	Server     struct {
+	Server       struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 		IP   string `json:"ip"`
 	} `json:"server"`
+}
+
+type CatalogWorkspace struct {
+	ID              string  `json:"id"`
+	Name            string  `json:"name"`
+	Slug            string  `json:"slug"`
+	Type            string  `json:"type"`
+	IsPersonal      bool    `json:"is_personal"`
+	CurrentUserRole string  `json:"current_user_role"`
+	Sites           []Site  `json:"sites"`
+}
+
+type Catalog struct {
+	Workspaces []CatalogWorkspace `json:"workspaces"`
 }
 
 type ActiveDeployment struct {
@@ -199,6 +213,20 @@ func (c *Client) GetCurrentWorkspace() (*Workspace, error) {
 	}
 
 	return &workspace, nil
+}
+
+func (c *Client) ListCatalog() (*Catalog, error) {
+	resp, err := c.get("/cli/catalog")
+	if err != nil {
+		return nil, err
+	}
+
+	var catalog Catalog
+	if err := json.Unmarshal(resp.Data, &catalog); err != nil {
+		return nil, fmt.Errorf("failed to parse catalog: %w", err)
+	}
+
+	return &catalog, nil
 }
 
 func (c *Client) ListSites() ([]Site, error) {

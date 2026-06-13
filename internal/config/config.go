@@ -17,10 +17,12 @@ type Credentials struct {
 }
 
 type SiteConfig struct {
-	ID           string `json:"site_id"`
-	Domain       string `json:"domain"`
-	DeployBranch string `json:"deploy_branch,omitempty"`
-	Label        string `json:"label,omitempty"`
+	ID            string `json:"site_id"`
+	Domain        string `json:"domain"`
+	DeployBranch  string `json:"deploy_branch,omitempty"`
+	Label         string `json:"label,omitempty"`
+	WorkspaceID   string `json:"workspace_id,omitempty"`
+	WorkspaceName string `json:"workspace_name,omitempty"`
 }
 
 // DisplayName returns the human-friendly site name (label, or alias).

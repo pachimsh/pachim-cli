@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/fatih/color"
 	"github.com/pachimsh/cli/internal/config"
 	"github.com/spf13/cobra"
@@ -24,38 +21,21 @@ func runSites(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	client, err := newAPIClient(creds)
-	if err != nil {
-		color.Red("%s", err)
-		return nil
-	}
+	client := newCatalogAPIClient(creds)
 
-	sites, err := client.ListSites()
+	catalog, err := client.ListCatalog()
 	if err != nil {
 		color.Red("Failed to fetch sites: %s", err)
 		return nil
 	}
 
-	if len(sites) == 0 {
+	entries := flattenCatalog(catalog)
+	if len(entries) == 0 {
 		color.Yellow("No sites found.")
 		return nil
 	}
 
-	fmt.Println()
-	color.Cyan("Your Sites (%s):", activeWorkspaceLabel(creds))
-	fmt.Println(strings.Repeat("─", 70))
-	fmt.Printf("  %-28s %-10s %-12s %-15s\n", "DOMAIN", "TYPE", "STATUS", "SERVER")
-	fmt.Println(strings.Repeat("─", 70))
-	for _, site := range sites {
-		status := site.SetupType
-		if status == "" {
-			status = "not setup"
-		}
-		fmt.Printf("  %-28s %-10s %-12s %-15s\n", site.Domain, site.AppType, status, site.Server.Name)
-	}
-	fmt.Println(strings.Repeat("─", 70))
-	fmt.Printf("  Total: %d sites\n", len(sites))
-	fmt.Println()
+	printCatalogTable(catalog, entries)
 
 	return nil
 }

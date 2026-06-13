@@ -20,7 +20,7 @@ type pushTarget struct {
 	AutoResolved bool
 }
 
-func resolvePushTarget(projCfg *config.ProjectConfig, client *api.Client, cwd string) (*pushTarget, error) {
+func resolvePushTarget(projCfg *config.ProjectConfig, creds *config.Credentials, cwd string) (*pushTarget, error) {
 	if pushSiteFlag != "" {
 		site, ok := projCfg.Sites[pushSiteFlag]
 		if !ok {
@@ -99,7 +99,7 @@ func resolvePushTarget(projCfg *config.ProjectConfig, client *api.Client, cwd st
 	}
 
 	if head != nil && head.Branch != "" {
-		offerSaveDeployBranchMapping(projCfg, client, alias, head.Branch)
+		offerSaveDeployBranchMapping(projCfg, creds, alias, head.Branch)
 		target.Site = projCfg.Sites[alias]
 	}
 

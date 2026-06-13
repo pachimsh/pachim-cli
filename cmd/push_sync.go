@@ -4,26 +4,23 @@ import (
 	"fmt"
 
 	"github.com/fatih/color"
-	"github.com/pachimsh/cli/internal/api"
 	"github.com/pachimsh/cli/internal/config"
 )
 
 var errNoConfiguredSites = fmt.Errorf("no sites configured")
 
-func syncProjectConfigWithServer(projCfg *config.ProjectConfig, client *api.Client) error {
+func syncProjectConfigWithServer(projCfg *config.ProjectConfig, creds *config.Credentials) error {
 	if len(projCfg.Sites) == 0 {
 		return errNoConfiguredSites
 	}
 
-	remoteSites, err := client.ListSites()
+	client := newCatalogAPIClient(creds)
+	catalog, err := client.ListCatalog()
 	if err != nil {
 		return fmt.Errorf("failed to fetch sites from Pachim: %w", err)
 	}
 
-	validIDs := make(map[string]struct{}, len(remoteSites))
-	for _, site := range remoteSites {
-		validIDs[site.ID] = struct{}{}
-	}
+	validIDs := remoteSiteIDsFromCatalog(catalog)
 
 	removed, changed := config.PruneStaleSites(projCfg, validIDs)
 	if !changed {

@@ -56,7 +56,7 @@ func runDeployments(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	client, err := newAPIClient(creds)
+	client, err := newAPIClientForSite(creds, site)
 	if err != nil {
 		color.Red("%s", err)
 		return nil
