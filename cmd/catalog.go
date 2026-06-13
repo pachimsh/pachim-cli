@@ -12,7 +12,16 @@ import (
 type catalogEntry struct {
 	Index     int
 	Site      api.Site
-	Workspace api.CatalogWorkspace
+	Workspace catalogWorkspaceRef
+}
+
+type catalogWorkspaceRef struct {
+	ID              string
+	Name            string
+	Slug            string
+	Type            string
+	IsPersonal      bool
+	CurrentUserRole string
 }
 
 func flattenCatalog(catalog *api.Catalog) []catalogEntry {
@@ -24,17 +33,38 @@ func flattenCatalog(catalog *api.Catalog) []catalogEntry {
 	index := 1
 
 	for _, workspace := range catalog.Workspaces {
+		ref := catalogWorkspaceRefFromAPI(workspace)
+
 		for _, site := range workspace.Sites {
+			entryRef := ref
+			if site.WorkspaceID != "" {
+				entryRef.ID = site.WorkspaceID
+			}
+			if site.WorkspaceName != "" {
+				entryRef.Name = site.WorkspaceName
+			}
+
 			entries = append(entries, catalogEntry{
 				Index:     index,
 				Site:      site,
-				Workspace: workspace,
+				Workspace: entryRef,
 			})
 			index++
 		}
 	}
 
 	return entries
+}
+
+func catalogWorkspaceRefFromAPI(workspace api.CatalogWorkspace) catalogWorkspaceRef {
+	return catalogWorkspaceRef{
+		ID:              workspace.ID,
+		Name:            workspace.Name,
+		Slug:            workspace.Slug,
+		Type:            workspace.Type,
+		IsPersonal:      workspace.IsPersonal,
+		CurrentUserRole: workspace.CurrentUserRole,
+	}
 }
 
 func catalogSiteCount(catalog *api.Catalog) int {
@@ -57,8 +87,9 @@ func printCatalogPicker(title string, catalog *api.Catalog, entries []catalogEnt
 		}
 		workspaceCount++
 
-		label := workspaceLabel(workspace)
-		role := workspaceRoleLabel(workspace)
+		ref := catalogWorkspaceRefFromAPI(workspace)
+		label := workspaceLabelRef(ref)
+		role := workspaceRoleLabelRef(ref)
 		if role != "" {
 			color.New(color.FgHiCyan, color.Bold).Printf("  %s", label)
 			fmt.Printf("  %s\n", color.New(color.FgHiBlack).Sprint(role))
@@ -68,8 +99,9 @@ func printCatalogPicker(title string, catalog *api.Catalog, entries []catalogEnt
 
 		fmt.Println("  " + strings.Repeat("─", 68))
 
+		workspaceKey := catalogWorkspaceKey(ref)
 		for _, entry := range entries {
-			if !sameCatalogWorkspace(entry.Workspace, workspace) {
+			if catalogWorkspaceKey(entry.Workspace) != workspaceKey {
 				continue
 			}
 
@@ -133,7 +165,7 @@ func printCatalogTable(catalog *api.Catalog, entries []catalogEntry) {
 			appType,
 			status,
 			serverName,
-			workspaceLabel(entry.Workspace),
+			workspaceLabelRef(entry.Workspace),
 		)
 	}
 
@@ -142,29 +174,29 @@ func printCatalogTable(catalog *api.Catalog, entries []catalogEntry) {
 	fmt.Println()
 }
 
-func sameCatalogWorkspace(a, b api.CatalogWorkspace) bool {
-	if strings.TrimSpace(a.ID) != "" && strings.TrimSpace(b.ID) != "" {
-		return a.ID == b.ID
+func catalogWorkspaceKey(ref catalogWorkspaceRef) string {
+	if id := strings.TrimSpace(ref.ID); id != "" {
+		return "id:" + id
 	}
 
-	return a.Name == b.Name
+	return "name:" + strings.TrimSpace(ref.Name)
 }
 
-func workspaceLabel(workspace api.CatalogWorkspace) string {
-	name := strings.TrimSpace(workspace.Name)
+func workspaceLabelRef(ref catalogWorkspaceRef) string {
+	name := strings.TrimSpace(ref.Name)
 	if name == "" {
 		name = "Account"
 	}
 
-	if workspace.IsPersonal {
+	if ref.IsPersonal {
 		return name + " (personal)"
 	}
 
 	return name
 }
 
-func workspaceRoleLabel(workspace api.CatalogWorkspace) string {
-	role := strings.TrimSpace(workspace.CurrentUserRole)
+func workspaceRoleLabelRef(ref catalogWorkspaceRef) string {
+	role := strings.TrimSpace(ref.CurrentUserRole)
 	if role == "" {
 		return ""
 	}
@@ -177,10 +209,18 @@ func workspaceIDForEntry(entry catalogEntry) string {
 		return ""
 	}
 
+	if id := strings.TrimSpace(entry.Site.WorkspaceID); id != "" {
+		return id
+	}
+
 	return strings.TrimSpace(entry.Workspace.ID)
 }
 
 func workspaceNameForEntry(entry catalogEntry) string {
+	if name := strings.TrimSpace(entry.Site.WorkspaceName); name != "" {
+		return name
+	}
+
 	return strings.TrimSpace(entry.Workspace.Name)
 }
 

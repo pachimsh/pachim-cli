@@ -14,15 +14,15 @@ func TestFlattenCatalog(t *testing.T) {
 				ID:   "ws-personal",
 				Name: "Personal",
 				Sites: []api.Site{
-					{ID: "s1", Domain: "one.test"},
-					{ID: "s2", Domain: "two.test"},
+					{ID: "s1", Domain: "one.test", WorkspaceID: "ws-personal"},
+					{ID: "s2", Domain: "two.test", WorkspaceID: "ws-personal"},
 				},
 			},
 			{
 				ID:   "ws-team",
 				Name: "Team",
 				Sites: []api.Site{
-					{ID: "s3", Domain: "three.test"},
+					{ID: "s3", Domain: "three.test", WorkspaceID: "ws-team"},
 				},
 			},
 		},
@@ -44,8 +44,8 @@ func TestFlattenCatalog(t *testing.T) {
 
 func TestSetProjectWorkspaceFromEntries(t *testing.T) {
 	entries := []catalogEntry{
-		{Workspace: api.CatalogWorkspace{ID: "ws-team", IsPersonal: false}},
-		{Workspace: api.CatalogWorkspace{ID: "ws-team", IsPersonal: false}},
+		{Workspace: catalogWorkspaceRef{ID: "ws-team", IsPersonal: false}},
+		{Workspace: catalogWorkspaceRef{ID: "ws-team", IsPersonal: false}},
 	}
 
 	cfg := &config.ProjectConfig{}
@@ -55,13 +55,22 @@ func TestSetProjectWorkspaceFromEntries(t *testing.T) {
 	}
 
 	mixed := []catalogEntry{
-		{Workspace: api.CatalogWorkspace{ID: "ws-a", IsPersonal: false}},
-		{Workspace: api.CatalogWorkspace{ID: "ws-b", IsPersonal: false}},
+		{Workspace: catalogWorkspaceRef{ID: "ws-a", IsPersonal: false}},
+		{Workspace: catalogWorkspaceRef{ID: "ws-b", IsPersonal: false}},
 	}
 
 	cfg = &config.ProjectConfig{}
 	setProjectWorkspaceFromEntries(cfg, mixed)
 	if cfg.WorkspaceID != "" {
 		t.Fatalf("expected empty workspace id for mixed workspaces, got %q", cfg.WorkspaceID)
+	}
+}
+
+func TestCatalogWorkspaceKeyUsesID(t *testing.T) {
+	a := catalogWorkspaceRef{ID: "ws-1", Name: "Alpha"}
+	b := catalogWorkspaceRef{ID: "ws-2", Name: "Alpha"}
+
+	if catalogWorkspaceKey(a) == catalogWorkspaceKey(b) {
+		t.Fatal("expected different keys for different workspace ids")
 	}
 }

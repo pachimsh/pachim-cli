@@ -39,14 +39,16 @@ type LoginResponse struct {
 }
 
 type Site struct {
-	ID           string `json:"id"`
-	Domain       string `json:"domain"`
-	AppType      string `json:"app_type"`
-	SetupType    string `json:"setup_type"`
-	RepoStatus   string `json:"repo_status"`
-	DeployBranch string `json:"deploy_branch"`
-	GitMerge     bool   `json:"git_merge"`
-	Server       struct {
+	ID            string `json:"id"`
+	Domain        string `json:"domain"`
+	AppType       string `json:"app_type"`
+	SetupType     string `json:"setup_type"`
+	RepoStatus    string `json:"repo_status"`
+	DeployBranch  string `json:"deploy_branch"`
+	GitMerge      bool   `json:"git_merge"`
+	WorkspaceID   string `json:"workspace_id,omitempty"`
+	WorkspaceName string `json:"workspace_name,omitempty"`
+	Server        struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 		IP   string `json:"ip"`
